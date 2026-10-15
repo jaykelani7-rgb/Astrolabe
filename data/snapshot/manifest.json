@@ -1,0 +1,92 @@
+{
+  "snapshotId": "zustand-0ea8be27db13",
+  "name": "Zustand",
+  "repositoryUrl": "https://github.com/pmndrs/zustand",
+  "commitSha": "0ea8be27db13019819fc1c0492e5b672dd7b6f4b",
+  "tag": "v5.0.8",
+  "license": "MIT",
+  "language": "TypeScript",
+  "preparedAt": "2026-10-15T00:00:00.000Z",
+  "status": "ready",
+  "description": "A compact state management library: stores, React subscriptions, and composable middleware.",
+  "sourceUrl": "https://github.com/pmndrs/zustand/tree/0ea8be27db13019819fc1c0492e5b672dd7b6f4b/src",
+  "archiveSha256": "fd1629f4fcd53d459ba46a90f81ffe41514878ef73e5532dee97031fe41d0cea",
+  "files": [
+    {
+      "path": "src/index.ts",
+      "sha256": "eb055d4a0e39f555ca5d160d05d5f58813cbbde672f713c6b27b0a3c5dba317c",
+      "bytes": 56
+    },
+    {
+      "path": "src/middleware/combine.ts",
+      "sha256": "820148813b39c53ec432ace642d64f0fc07f737dcdfe6fc0529ac156c01d1137",
+      "bytes": 478
+    },
+    {
+      "path": "src/middleware/devtools.ts",
+      "sha256": "c2feff750ac30e8285fc2dc96b3f9e88da81132a7f3c63d332acfdaea69d17cf",
+      "bytes": 13283
+    },
+    {
+      "path": "src/middleware/immer.ts",
+      "sha256": "49abb9c76e69f40d7886bd74417bbb4c51299ffb7bfd2def88a032929898b409",
+      "bytes": 2522
+    },
+    {
+      "path": "src/middleware/persist.ts",
+      "sha256": "c568a31cf3bdb8cb1df26ff5b6e319a9f25ee4b020378ea0535ba2b1a398357a",
+      "bytes": 11660
+    },
+    {
+      "path": "src/middleware/redux.ts",
+      "sha256": "50d584b8945449efbb915125c6343b31d7c191ef4b67da86de6a802668e407f9",
+      "bytes": 1329
+    },
+    {
+      "path": "src/middleware/subscribeWithSelector.ts",
+      "sha256": "237ec172e45a1563b4fb53435a65d37a127bafcd1379994c22728b1ba2375325",
+      "bytes": 2409
+    },
+    {
+      "path": "src/middleware.ts",
+      "sha256": "8439e858a2a5a3c8c7ac86170f5d2a64c0436386db6ead49dd98a435ca1c692e",
+      "bytes": 432
+    },
+    {
+      "path": "src/react/shallow.ts",
+      "sha256": "edfe467e7bccaf32cd63ce9875a357cb08f9ada95bef594d3d2fdc4dbe885e3e",
+      "bytes": 354
+    },
+    {
+      "path": "src/react.ts",
+      "sha256": "113041183bb72777628f72ef6883207d933cd46f1a45abe070675382326193bf",
+      "bytes": 1806
+    },
+    {
+      "path": "src/shallow.ts",
+      "sha256": "40a8e406fb5653b0ebcc76260f82350e0138ed2904e4d0b23d0cef8e3de47766",
+      "bytes": 95
+    },
+    {
+      "path": "src/traditional.ts",
+      "sha256": "fd569a652683bdfc4cf88cddd3b45615b1ad097ba08e3b46ef039106120cfc65",
+      "bytes": 2565
+    },
+    {
+      "path": "src/types.d.ts",
+      "sha256": "1b15d63fe8ca118a15eeb01b6a0a06fdb66a34061ab03a2821ba1f646d5809b5",
+      "bytes": 64
+    },
+    {
+      "path": "src/vanilla/shallow.ts",
+      "sha256": "a9cc8e28e466566124388014b6289e06909fb671bfb38659a3fb6d3dfe5e7202",
+      "bytes": 1979
+    },
+    {
+      "path": "src/vanilla.ts",
+      "sha256": "396aea7a580862e283f533afc74b26e0f2a9899a1e666c8b1d494aeebe20e7bc",
+      "bytes": 3338
+    }
+  ],
+  "licenseSha256": "c1e6e266563517467b1bf874817d23e426f3149252bd7d42758cd697514b8417"
+}

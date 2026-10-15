@@ -1,0 +1,41 @@
+{
+  "name": "codebase-mentor",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "prepare:repository": "node --import tsx scripts/prepare-repository.ts",
+    "evaluate:qa": "node --conditions=react-server --import tsx scripts/evaluate-qa.ts",
+    "postinstall": "node scripts/setup-monaco.mjs",
+    "setup": "node scripts/setup-monaco.mjs && npm run prepare:repository"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "4.7.0",
+    "@xyflow/react": "12.12.0",
+    "lucide-react": "1.57.0",
+    "monaco-editor": "0.57.0",
+    "next": "16.4.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1",
+    "ts-morph": "28.0.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "snapshotId": "zustand-0ea8be27db13",
+  "commitSha": "0ea8be27db13019819fc1c0492e5b672dd7b6f4b",
+  "protocol": "Sixteen development questions and eight held-out questions. The evaluation runner excludes held-out questions unless --held-out is explicitly passed. Do not use held-out responses to tune retrieval or prompts. Give them to an independent reviewer before running a final evaluation.",
+  "humanClaimReview": "pending",
+  "participantStudy": "pending; no participants or comparative learning-effectiveness measurements have been collected",
+  "questions": [
+    { "id": "Q01", "split": "development", "question": "How does setState update state?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"], "preparedMatch": true },
+    { "id": "Q02", "split": "development", "question": "How do I unsubscribe?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"], "preparedMatch": true },
+    { "id": "Q03", "split": "development", "question": "How does useStore use a selector?", "expectation": "source_supported", "sourcePaths": ["src/react.ts"], "preparedMatch": true },
+    { "id": "Q04", "split": "development", "question": "What is getInitialState?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"], "preparedMatch": true },
+    { "id": "Q05", "split": "development", "question": "Where is a functional partial evaluated in setState?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"] },
+    { "id": "Q06", "split": "development", "question": "What condition gates listener notification in setState?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"] },
+    { "id": "Q07", "split": "development", "question": "Where are the previous and current states passed to listeners?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"] },
+    { "id": "Q08", "split": "development", "question": "How does createImpl attach the store API to the React hook?", "expectation": "source_supported", "sourcePaths": ["src/react.ts"] },
+    { "id": "Q09", "split": "development", "question": "Which source modules are exported by the main index?", "expectation": "source_supported", "sourcePaths": ["src/index.ts"] },
+    { "id": "Q10", "split": "development", "question": "How does combine construct its returned object?", "expectation": "source_supported", "sourcePaths": ["src/middleware/combine.ts"] },
+    { "id": "Q11", "split": "development", "question": "How does subscribeWithSelector use equalityFn?", "expectation": "source_supported", "sourcePaths": ["src/middleware/subscribeWithSelector.ts"] },
+    { "id": "Q12", "split": "development", "question": "What does redux dispatch return?", "expectation": "source_supported", "sourcePaths": ["src/middleware/redux.ts"] },
+    { "id": "Q13", "split": "development", "question": "Which encryption algorithm protects credit card payments?", "expectation": "evidence_gap", "sourcePaths": [] },
+    { "id": "Q14", "split": "development", "question": "Where is the Kubernetes deployment cluster configured?", "expectation": "evidence_gap", "sourcePaths": [] },
+    { "id": "Q15", "split": "development", "question": "What production latency benchmark proves a million users are supported?", "expectation": "evidence_gap", "sourcePaths": [] },
+    { "id": "Q16", "split": "development", "question": "Which SQL database migrations implement customer billing?", "expectation": "evidence_gap", "sourcePaths": [] },
+    { "id": "H01", "split": "held_out", "question": "When does setState replace rather than merge an object?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"] },
+    { "id": "H02", "split": "held_out", "question": "Does getInitialState deep clone the initial object?", "expectation": "source_supported", "sourcePaths": ["src/vanilla.ts"] },
+    { "id": "H03", "split": "held_out", "question": "Which snapshot reader does useStore provide for server rendering?", "expectation": "source_supported", "sourcePaths": ["src/react.ts"] },
+    { "id": "H04", "split": "held_out", "question": "How does the shallow comparison treat iterable entries?", "expectation": "source_supported", "sourcePaths": ["src/vanilla/shallow.ts"] },
+    { "id": "H05", "split": "held_out", "question": "How does useShallow reuse the previous selector result?", "expectation": "source_supported", "sourcePaths": ["src/react/shallow.ts"] },
+    { "id": "H06", "split": "held_out", "question": "How does the immer middleware transform a function updater?", "expectation": "source_supported", "sourcePaths": ["src/middleware/immer.ts"] },
+    { "id": "H07", "split": "held_out", "question": "Which OAuth provider authenticates repository learners?", "expectation": "evidence_gap", "sourcePaths": [] },
+    { "id": "H08", "split": "held_out", "question": "What payment gateway processes annual subscriptions?", "expectation": "evidence_gap", "sourcePaths": [] }
+  ]
+}
