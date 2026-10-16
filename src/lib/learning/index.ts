@@ -34,6 +34,17 @@ export function getTask(id: string): PublicTask {
   return task;
 }
 
+function scoreAnswer(task: PublicTask, answer: Answer): boolean {
+  const expected = rubrics[task.id].answer;
+  // A range's property order does not affect its meaning.
+  if (task.type === 'range') {
+    const actual = answer as { startLine: number; endLine: number };
+    const range = expected as { startLine: number; endLine: number };
+    return actual.startLine === range.startLine && actual.endLine === range.endLine;
+  }
+  return JSON.stringify(answer) === JSON.stringify(expected);
+}
+
 function validateAnswer(task: PublicTask, answer: Answer) {
   if (task.type === 'choice') {
     if (typeof answer !== 'string' || !task.choices.some((choice) => choice.id === answer)) throw new AppError('INVALID_ANSWER', 'Choose one of the offered answers.');
@@ -49,12 +60,32 @@ export function submitAttempt(sessionId: string, id: string, input: { snapshotId
   if (input.snapshotId !== task.snapshotId) throw new AppError('SNAPSHOT_MISMATCH', 'This answer belongs to a different source snapshot.', 409);
   validateAnswer(task, input.answer);
   const rubric = rubrics[id];
-  const correct = JSON.stringify(input.answer) === JSON.stringify(rubric.answer);
-  // Object property order in a valid range must not affect scoring.
-  const scored = task.type === 'range' ? (input.answer as { startLine: number; endLine: number }).startLine === (rubric.answer as { startLine: number }).startLine && (input.answer as { startLine: number; endLine: number }).endLine === (rubric.answer as { endLine: number }).endLine : correct;
+  const scored = scoreAnswer(task, input.answer);
   const hintsUsed = getHintCount(sessionId, id);
   const saved = saveAttempt(sessionId, id, input.answer, scored, hintsUsed);
   return { taskId: id, correct: scored, attemptNumber: saved.attemptNumber, hintsUsed, explanation: rubric.explanation, evidenceIds: task.contextEvidenceIds, submittedAnswer: input.answer };
+}
+
+
+export interface TaskSessionProgress { feedback: Feedback | null; hintsUsed: number; hint?: string }
+
+/** Restore only feedback that this signed session has already unlocked by attempting. */
+export function taskSessionProgress(sessionId: string, taskId: string): TaskSessionProgress {
+  const task = getTask(taskId);
+  const hintsUsed = getHintCount(sessionId, taskId);
+  const progress: TaskSessionProgress = { feedback: null, hintsUsed, ...(hintsUsed > 0 ? { hint: rubrics[taskId].hint } : {}) };
+  const attempts = getAttempts(sessionId).filter(attempt => attempt.taskId === taskId).sort((a, b) => b.attemptNumber - a.attemptNumber);
+  for (const attempt of attempts) {
+    // Revalidate stored answers against the active pinned task before releasing any rubric text.
+    try { validateAnswer(task, attempt.answer as Answer); } catch { continue; }
+    progress.feedback = {
+      taskId, correct: scoreAnswer(task, attempt.answer as Answer), attemptNumber: attempt.attemptNumber,
+      hintsUsed: attempt.hintsUsed, explanation: { ...rubrics[taskId].explanation },
+      evidenceIds: [...task.contextEvidenceIds], submittedAnswer: structuredClone(attempt.answer),
+    };
+    break;
+  }
+  return progress;
 }
 
 export function requestHint(sessionId: string, id: string) {

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "Codebase Mentor — Find your first contribution",
+  title: "Astrolabe — Your codebase mentor",
   description:
-    "Explore real source. Predict what happens. Build your understanding, one small step at a time.",
+    "A source-backed notebook for understanding an unfamiliar repository. Explore, ask, predict, and verify.",
 };
 export default function RootLayout({
   children,

@@ -1,4 +1,6 @@
-# Codebase Mentor
+# Astrolabe
+
+**Your codebase mentor.**
 
 A working local learning workspace for an unfamiliar codebase. Explore real source, follow a flow, predict what happens before seeing feedback, verify the explanation against exact source lines, and leave with a small contribution brief.
 
@@ -27,15 +29,17 @@ Run these from the project root. Do not run development and production servers f
 
 ## What works
 
-- A start workspace showing repository provenance and the pinned commit.
-- A searchable file inventory, clickable React Flow module map, and read-only Monaco source viewer. The viewer's editor assets and workers are served locally.
+- A useful notebook overview with a recommended starting file, real progress, and Start/Continue learning. A compact navigation rail connects Overview, Explore, Learn, and My progress. The repository header preserves provenance and honest answer-availability labels.
+- A searchable file inventory, clickable React Flow module map, and read-only Monaco source viewer. Desktop panels collapse and resize by pointer or keyboard, and focus mode expands the editor. Smaller screens use Files, Code and Mentor tabs. The editor assets and workers are served locally.
 - An AST index of imports, re-exports and top-level symbols using ts-morph. The map distinguishes type-only imports and lists external or unresolved references. It represents **static imports**, not runtime execution.
 - Exact, inclusive, 1-based evidence ranges with snapshot-scoped identifiers, source hashes and validation.
 - Two source-checked walkthroughs: **From state update to subscribers** (five steps) and **From a store to a React selection** (four steps), each with Beginner and Developer explanations using the same evidence.
 - Four prediction tasks: two choices, one ordering exercise, and one source-range exercise. An attempt is required before feedback. Scoring and rubrics stay on the server.
-- Recorded hints, retries, first-attempt correctness, completion, topics to revisit, and two bounded documentation contribution briefs.
-- Contextual Q&A with source retrieval, structured Gemini output, citation validation, timeout handling and explicit evidence-gap/unavailable states. A small set of prepared answers is visibly labeled **Reviewed answer**, and live output is labeled **Live AI answer**.
-- Signed anonymous session cookies, persistent SQLite attempts and session-scoped reset. Reset your practice data from **Your progress → Reset this learning session**.
+- One continuous Learn flow: checkpoints open alongside their walkthrough, restore submitted answers and feedback, and return with Continue walkthrough. Steps visited on this device are separate from server-scored checkpoints solved.
+- Recorded hints, retries, first-attempt correctness, completion, topics to revisit, and two explicitly prepared documentation contribution briefs.
+- Contextual Q&A with explicit Repository, Current file and Selected lines scopes, plus This walkthrough in Learn. Repository scope omits the open-file filter. This walkthrough uses reviewed source targets across its flow, prioritizing the active step, without adding the open-file filter. Answers keep their original question, scope, depth and readable source citations when source changes. A compact history retains up to 12 answers for this snapshot, with a Latest answer action.
+- Source retrieval, structured Gemini output, citation validation, timeout handling and explicit evidence-gap/unavailable states. A small set of prepared answers is visibly labeled **Reviewed answer**, and live output is labeled **Live AI answer**.
+- Signed anonymous session cookies, persistent SQLite attempts and session-scoped reset. Reset your practice data from **My progress → Reset this learning session**.
 
 “Reviewed” identifies versioned, source-checked prepared material. Implementation agents checked its source references; **independent human claim review is still pending**. Citation integrity is not proof that an explanation is semantically correct.
 
@@ -50,16 +54,17 @@ GEMINI_MODEL=gemini-3.8-flash
 
 Restart the server after changing environment variables. The key stays server-side and is sent to Google in the request header. The adapter sends the question and bounded retrieved source excerpts to Gemini. Source text is treated as untrusted data. Provider requests time out after 12 seconds. No live provider call has been verified in this build because no credential was supplied.
 
-Try these prepared questions while viewing the relevant file (clear unrelated line selections first):
+Try these prepared questions with an explicit scope:
 
-| Source | Question |
-| --- | --- |
-| `src/vanilla.ts` | How does setState update state? |
-| `src/vanilla.ts` | How do I unsubscribe? |
-| `src/react.ts` | How does useStore use a selector? |
-| `src/vanilla.ts` or `src/react.ts` | What is getInitialState? |
+| Scope | Source or flow | Question |
+| --- | --- | --- |
+| Current file | `src/vanilla.ts` | How does setState update state? |
+| Current file | `src/vanilla.ts` | How do I unsubscribe? |
+| Current file | `src/react.ts` | How does useStore use a selector? |
+| This walkthrough | From a store to a React selection | What is getInitialState? |
+| Repository | Whole snapshot | What is getInitialState? |
 
-A question about an absent PostgreSQL migration engine produces an evidence gap. A plausible source question that has no matching prepared answer reports live AI unavailable without a key. Prepared matches respect the selected file and range; the app does not silently substitute an answer about unrelated source.
+A question about an absent PostgreSQL migration engine produces an evidence gap. A plausible source question that has no matching prepared answer reports live AI unavailable without a key. Prepared matches and live retrieval respect the selected file and exact line range; the app does not silently broaden that scope. A prepared explanation is available only when every one of its cited targets fits the chosen context. For example, the unsubscribe explanation needs both lines60–64 and88–92, so selecting only88–92 cannot reveal that full prepared explanation. Expand the scope deliberately if needed.
 
 ## Data and restart behavior
 
@@ -101,7 +106,7 @@ The Q&A evaluation contains 24 questions: 16 development questions and eight res
 
 | Area | Responsibility |
 | --- | --- |
-| `src/app/`, `src/components/` | Application shell, exploration, guides, source and Q&A interface |
+| `src/app/`, `src/components/workspace/`, `src/lib/client/workspace.ts` | Small shell, notebook overview, panel layout, file/flow navigation and snapshot-scoped interface state |
 | `src/contracts/` | Shared TypeScript records and request validation |
 | `src/lib/repository/`, `src/lib/evidence/` | Snapshot inventory, AST relationships, source and evidence access |
 | `src/lib/db/` | Native SQLite/FTS5 schema, source index, attempt and hint persistence |
@@ -123,15 +128,31 @@ All route handlers run in the Node.js runtime. Errors use `{ "error": { "code": 
 | `GET /api/repository/source?fileId=...` | Allowlisted source; accepts snapshot/range validation parameters |
 | `GET /api/evidence/[id]` | Verified evidence record and text |
 | `GET /api/guides` | Walkthroughs and public tasks, without rubrics |
-| `GET /api/tasks/[id]` | Public task prompt and context |
+| `GET /api/tasks/[id]` | Public task prompt and context
+| `GET /api/tasks/[id]/progress` | This session's submitted answer/feedback and recorded hints; explanations require a prior attempt |
 | `POST /api/tasks/[id]/attempt` | Validated answer, server score and released explanation |
 | `POST /api/tasks/[id]/hint` | Hint and recorded hint count |
 | `GET /api/results` | Current session summary and contribution briefs |
 | `POST /api/questions` | Contextual Q&A response with explicit status and mode |
+| `GET /api/questions/status` | Prepared availability and whether a live key is configured; provider health remains unverified |
 | `POST /api/session/reset` | Clear only the current session's practice data |
 
-Question bodies are limited to 4 KB; general JSON requests are bounded to 8 KB. Snapshot mismatches, absent files/evidence, malformed answers, invalid ranges and provider failure return explicit outcomes. The local prototype prevents accidental answer reveal, not inspection by someone who controls its source or database.
+Question bodies are limited to 4 KB; general JSON requests are bounded to 8 KB. Q&A accepts either source context (`fileId` with optional `startLine`/`endLine`) or walkthrough context (`guideId` with optional `stepId`), never both. Empty file IDs and orphan/unknown steps fail explicitly. Walkthrough evidence is resolved from the pinned reviewed guide on the server. Snapshot mismatches, absent files/evidence, malformed answers, invalid ranges and provider failure return explicit outcomes. The local prototype prevents accidental answer reveal, not inspection by someone who controls its source or database.
 
 ## Boundaries
 
 This is a single-repository local prototype. Private repositories, uploads, additional languages, authentication, code execution/editing, version comparison, personalized learning paths and production hosting are outside scope. Import resolution covers static ES imports and re-exports in the bundled TypeScript files; dynamic imports, CommonJS and dependency implementations are omitted. Four small practice tasks do not measure professional readiness. Human review and a participant study are future evaluation work, not completed findings.
+
+## Interface state and redesign verification
+
+Astrolabe uses warm notebook surfaces with a coordinated dark source editor. The original build checks remain in `docs/SETUP-CHECK.md` and `docs/EVALUATION.md`; [redesign regressions and screenshots](docs/REDESIGN-CHECKS.md) record the latest interface verification.
+
+Lightweight browser state is namespaced under `astrolabe:workspace:<snapshotId>` and `astrolabe:mentor-history:v1:<snapshotId>`. It stores the selected file/range, walkthrough position, visited steps, question drafts/history and depth. Panel and navigation preferences use `astrolabe:preferences`. Invalid or stale records are ignored. No API keys or task rubrics are stored in the browser. Question history concerns the public snapshot and is separate from anonymous server scoring.
+
+Reset confirms deletion of the current session's attempts and hints. It preserves browser question history, visited-step records and layout preferences, as stated in the interface. Browser Back/Forward switches normal navigation views while keeping source context. Select Clear selection above the source to remove line scope. Changing explanation depth affects the current explanation and future questions; existing answers keep their original depth and offer an explicit rerun.
+
+## Walkthrough branch integration
+
+Fetched `origin/walkthrough-qa` at `e9a21e6` and combined its walkthrough-aware Q&A with the local Astrolabe redesign. In Learn, choose **This walkthrough** while following **From a store to a React selection**, then ask **What is getInitialState?**. It can cite both React and vanilla targets from the same reviewed flow. Its original guide and step remain attached to the answer; history, retries and deliberate depth reruns replay that original context even after navigation.
+
+The integration preserves the redesign rather than replacing it with the branch's older interface. [Branch verification and fixes](docs/BRANCH-CHECKS.md) records the original-branch checks, scope-boundary defects found, regression coverage and final build. Live Gemini availability still requires separate verification with a supplied server credential.

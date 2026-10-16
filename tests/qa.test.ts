@@ -204,13 +204,16 @@ describe('prepared Q&A against the immutable snapshot', () => {
     }
   });
 
-  it('matches a related React initial-state question and refuses unrelated prepared content', async () => {
+  it('keeps prepared answers within a restrictive file and selected source range', async () => {
     vi.stubEnv('GEMINI_API_KEY', '');
     vi.stubEnv('MENTOR_DB_PATH', ':memory:');
     const file = listFiles().find((entry) => entry.path === 'src/react.ts')!;
     const related = await answerQuestion({ question: 'What is getInitialState?', snapshotId: file.snapshotId, fileId: file.fileId, startLine: 26, endLine: 37 });
-    expect(related).toMatchObject({ status: 'answered', mode: 'reviewed' });
-    expect(related.citations.map((citation) => getSource(citation.fileId).file.path)).toEqual(['src/vanilla.ts', 'src/react.ts']);
+    // This authored explanation also needs vanilla.ts, which is outside the selected file.
+    expect(related).toMatchObject({ status: 'unavailable', mode: 'live', citations: [] });
+    const repository = await answerQuestion({ question: 'What is getInitialState?', snapshotId: file.snapshotId });
+    expect(repository).toMatchObject({ status: 'answered', mode: 'reviewed' });
+    expect(repository.citations.map((citation) => getSource(citation.fileId).file.path)).toEqual(['src/vanilla.ts', 'src/react.ts']);
     const result = await answerQuestion({ question: 'How do I unsubscribe?', snapshotId: file.snapshotId, fileId: file.fileId, startLine: 1, endLine: 9 });
     expect(result.status).toBe('unavailable');
     expect(result.mode).toBe('live');

@@ -48,15 +48,21 @@ const preparedAnswers: PreparedAnswer[] = [
   },
 ];
 
-export function reviewedAnswer(input: QuestionInput, store: EvidenceRepository): QaResponse | undefined {
+export function reviewedAnswer(input: QuestionInput, store: EvidenceRepository, walkthroughEvidence?: Evidence[]): QaResponse | undefined {
   if (input.snapshotId !== PREPARED_SNAPSHOT) return undefined;
   const prepared = preparedAnswers.find((item) => item.aliases.some((alias) => normalize(alias) === normalize(input.question)));
   if (!prepared) return undefined;
   const files = store.listFiles();
-  if (input.fileId && !prepared.targets.some((target) => {
+  // Every claim in a prepared explanation needs its full target, not a partial overlap.
+  // Check the chosen scope before creating or reading any prepared citation records.
+  if (!prepared.targets.every((target) => {
     const file = files.find((candidate) => candidate.path === target.path);
-    return file?.fileId === input.fileId && (input.startLine === undefined || input.endLine === undefined
-      || (input.startLine <= target.endLine && input.endLine >= target.startLine));
+    if (!file || file.snapshotId !== input.snapshotId) return false;
+    if (input.fileId && (file.fileId !== input.fileId || (input.startLine !== undefined
+      && input.endLine !== undefined && (target.startLine < input.startLine || target.endLine > input.endLine)))) return false;
+    return !walkthroughEvidence || walkthroughEvidence.some((range) => range.snapshotId === input.snapshotId
+      && range.fileId === file.fileId && range.contentHash === file.contentHash
+      && range.startLine <= target.startLine && range.endLine >= target.endLine);
   })) return undefined;
   const citations: Evidence[] = [];
   for (const target of prepared.targets) {

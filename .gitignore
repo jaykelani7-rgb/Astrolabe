@@ -10,3 +10,5 @@ public/monaco/
 .DS_Store
 .data/
 *.tsbuildinfo
+/.codex/skills/
+/.agents/skills/
