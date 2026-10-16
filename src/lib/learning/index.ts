@@ -254,8 +254,8 @@ export function submitAttempt(
 }
 
 export interface TaskSessionProgress {
-  snapshotId: string;
-  contentVersion: string;
+  snapshotId?: string;
+  contentVersion?: string;
   feedback: Feedback | null;
   hintsUsed: number;
   hint?: string;
@@ -273,7 +273,7 @@ export function taskSessionProgress(
     throw new AppError("CONTENT_VERSION_MISMATCH", "Reload this task before restoring progress.", 409);
   const hintsUsed = getHintCount(sessionId, taskId, taskContext(task));
   const progress: TaskSessionProgress = {
-    ...taskContext(task),
+    ...(contentVersion !== undefined ? taskContext(task) : {}),
     feedback: null,
     hintsUsed,
     ...(hintsUsed > 0 ? { hint: rubrics[taskId].hint } : {}),
@@ -313,7 +313,7 @@ export function requestHint(
   if (contentVersion !== undefined && contentVersion !== task.contentVersion)
     throw new AppError("CONTENT_VERSION_MISMATCH", "Reload this task before requesting a hint.", 409);
   const hintsUsed = recordHint(sessionId, id, taskContext(task));
-  return { ...taskContext(task), hint: rubrics[id].hint, hintsUsed };
+  return { ...(contentVersion !== undefined ? taskContext(task) : {}), hint: rubrics[id].hint, hintsUsed };
 }
 
 export function sessionResults(
