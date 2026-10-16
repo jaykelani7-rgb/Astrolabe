@@ -18,6 +18,8 @@ async function main() {
           status: "blocked",
           reason: "missing_server_credential",
           liveRequests: 0,
+          preparedMatching: false,
+          cache: false,
           recordedAt: new Date().toISOString(),
         },
         null,
@@ -29,6 +31,8 @@ async function main() {
         status: "blocked",
         reason: "missing_server_credential",
         liveRequests: 0,
+        preparedMatching: false,
+        cache: false,
         output,
       }),
     );

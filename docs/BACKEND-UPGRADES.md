@@ -49,10 +49,12 @@ A successful response retains `answer`, `citations`, `mode` and `limitations`, a
 | `GET /api/architecture?snapshotId=...`                   | Authored responsibilities, evidence and reading order                                                                               |
 | `GET /api/guides?snapshotId=...`                         | Public guides/tasks, content versions and review metadata                                                                           |
 | `GET /api/tasks/[id]?snapshotId=...`                     | Public task without an answer key                                                                                                   |
+| `GET /api/tasks/[id]/progress?snapshotId=...`            | `{feedback,hintsUsed,hint?}`; feedback is null until this session attempts the selected task/version                                   |
 | `POST /api/tasks/[id]/attempt`                           | Existing body; additionally accepts `contentVersion`, and echoes version/snapshot metadata in feedback                              |
 | `POST /api/tasks/[id]/hint?snapshotId=...`               | Hint in the selected snapshot/content version                                                                                       |
 | `GET /api/results?snapshotId=...`                        | Snapshot-isolated practice summary                                                                                                  |
 | `POST /api/questions`                                    | Scoped question and persisted answer                                                                                                |
+| `GET /api/questions/status`                             | `{preparedAvailable,liveConfigured,liveStatus:"unverified"}`; configuration is not provider health                                     |
 | `GET /api/questions/history?snapshotId=...`              | Signed-session answers with original context; no other session's answers                                                            |
 | `GET /api/contributions?snapshotId=...&goal=...`         | Ranked briefs with prerequisite/remediation explanations                                                                            |
 | `POST /api/learning/goal`                                | `{snapshotId, goal}`; goal is architecture, debug, tests or documentation                                                           |
@@ -74,6 +76,94 @@ The upstream UI already supplies source/walkthrough scope controls and navigatio
 
 Backend response metadata makes those checks possible but does not repair an unmodified component. No layout, font or styling edits are included in this branch.
 
+## Integration recipes and response shapes
+
+Examples below describe the implemented contract, not a live Gemini result. Read IDs from the API rather than creating them on the client. JSON response examples show selected fields; preserve the full response, including limitations and evidence, in history.
+
+### Source scope, claim blocks and history
+
+Repository question:
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","question":"How does setState work?","scope":"repository","depth":"beginner"}
+```
+
+File and selection questions use the returned file ID. This is the pinned vanilla file's actual ID:
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","question":"How does setState update state?","scope":"selection","fileId":"file_2a08e62fa7ce2a79a93d","startLine":66,"endLine":81,"depth":"developer"}
+```
+
+For file scope use `scope:"file"` and omit range boundaries. For a walkthrough, omit source fields entirely:
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","question":"What is getInitialState?","scope":"walkthrough","guideId":"store-to-react","stepId":"react-import","depth":"beginner"}
+```
+
+An answered prepared response has `status:"answered"`, `mode:"reviewed"`, `reviewState:"authored"`, a server `answerId`, the legacy `answer` string, `blocks:[{text,kind,evidenceIds}]`, `citations:[{evidenceId,snapshotId,fileId,startLine,endLine,contentHash,text}]` and `limitations:string[]`. Live answered blocks use `reviewState:"generated"`; `kind` is observed, inferred or unknown. Resolve each block's IDs through the returned citations and open `/api/evidence/<id>?snapshotId=<original-snapshot>`. Unknown blocks must have no evidence IDs. Neither observed labels nor valid links prove the claims correct.
+
+Q&A may return HTTP 200 with `status:"evidence_gap"` or `status:"unavailable"`; both have empty citations. An evidence gap has an unknown block. Unavailable responses currently omit `blocks` and `reviewState`, so render those fields conditionally. Do not manufacture a successful answer or an authored label for unavailable output. Malformed context returns HTTP 400; an unknown snapshot returns HTTP 409. For example:
+
+```json
+{"error":{"code":"SNAPSHOT_MISMATCH","message":"This content belongs to a different repository snapshot."}}
+```
+
+`GET /api/questions/history` returns `{answers:[{id,snapshotId,category:"answer",createdAt,payload:{question,context,response,model}}]}` in oldest-first order, retaining at most 100 answers per session/snapshot. Use the record's `id` as its answer ID; the nested response was stored before `answerId` was added to the POST response. `model` records configured model metadata, not proof of a provider request or success. Preserve `payload.context` when replaying a question or changing explanation depth. Existing browser history is separate, holds 12 entries, and its current parser does not retain all added metadata across reloads; integrating server history and block metadata is UI work.
+
+### Prediction, versions and teach-back
+
+`GET /api/guides?snapshotId=...` returns `{guides,tasks,reviewState:"authored",humanReview:"pending"}`. Each public task carries `snapshotId` and `contentVersion`. The default is `zustand-learning-v1`; the mitt versions are `mitt-f9a0b5397edf-learning-v1` and `mitt-05f4ce67e8f1-learning-v1`. Guides and results do not currently carry a top-level content version. Attempts may omit the version for legacy compatibility; new clients should always send the task's returned version:
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","contentVersion":"zustand-learning-v1","answer":"skip"}
+```
+
+Send that body to `POST /api/tasks/same-reference/attempt`. Feedback includes `{taskId,snapshotId,contentVersion,correct,attemptNumber,hintsUsed,submittedAnswer,explanation:{beginner,developer},evidenceIds}`. An incorrect answer is still recorded; explanation text is released after an attempt. Invalid choices fail with HTTP 400 `INVALID_ANSWER`; a supplied stale version fails with HTTP 409 `CONTENT_VERSION_MISMATCH` and creates no attempt. Task progress returns null feedback before an attempt. Hints use a POST with the snapshot in the query and return `{hint,hintsUsed}`; hint/progress endpoints resolve the active content version and do not accept a caller-selected version. Discard any late response after the active snapshot/task/version changes.
+
+After an attempt, submit an explanation:
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","taskId":"same-reference","contentVersion":"zustand-learning-v1","text":"The identity guard skips notification when the updater returns the same object reference."}
+```
+
+`POST /api/teach-back` returns a submission `id`, `taskId`, `contentVersion`, the text, `status:"needs_review"`, rubric `concepts` initially `unassessed`, `evidenceIds`, review method and limitations. It requires a prior attempt (HTTP 409 `ATTEMPT_REQUIRED` otherwise). Rubrics currently exist for `same-reference`, `merge-change-point` and `mitt-dispatch-order`; other tasks return HTTP 404 `TEACH_BACK_UNAVAILABLE`.
+
+Use the returned submission UUID and assess each returned concept exactly once:
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","submissionId":"<returned-submission-UUID>","assessments":[{"conceptId":"identity_guard","state":"understood"},{"conceptId":"guarded_notification","state":"uncertain"}]}
+```
+
+`POST /api/teach-back/review` returns `status:"self_reviewed"`, `reviewMethod:"learner_self_assessment"`, assessed concepts and `followUps:[{conceptId,prompt,taskId,evidenceIds}]`. This illustrative UUID placeholder must be replaced by the actual response ID. No mastery score is returned. Submissions are signed-session private. There is currently no submission-list endpoint; retain the returned IDs in the client if review must resume.
+
+### Goals, progress, architecture, notebook and comparison
+
+- `POST /api/learning/goal` with `{"snapshotId":"zustand-0ea8be27db13","goal":"debug"}` returns the same snapshot and goal. GET returns `{snapshotId,goal}` with null for no goal. Valid goals are architecture, debug, tests and documentation.
+- `GET /api/contributions?snapshotId=...` uses the saved goal, or documentation by default; `goal=...` overrides ranking without saving it. Response: `{snapshotId,goal,recommendations,limitations}`. Recommendations extend public briefs with `goalMatch`, `status`, `remediationTaskIds`, `reason` and deterministic `score`. This ranking score is not a learner mastery score. The current catalog contains documentation briefs only.
+- `POST /api/progress` with `{"snapshotId":"zustand-0ea8be27db13","guideId":"state-to-subscribers","stepId":"predict-identity"}` returns the validated input. GET returns `{progress:null}` or `{progress:{id,snapshotId,category:"progress",payload:{snapshotId,guideId,stepId},createdAt}}`. Apply it only to its original snapshot; saved server position and current browser visited-step state are distinct.
+- `GET /api/architecture?snapshotId=...` returns `{snapshotId,commitSha,reviewState,humanReview,modules,readingOrder,relationships,unresolved,limitations}`. Each module has `fileId`, evidence IDs and public symbol ranges. Reading order entries are module IDs. Relationships are static imports, not runtime execution.
+- `POST /api/notebook/bookmarks` accepts `{"snapshotId":"zustand-0ea8be27db13","title":"State notes","note":"Revisit identity.","evidenceIds":["ev_490bbe887bbd98f44380886cad8498fd"]}` and returns `{id,snapshotId,title,note,evidenceIds,...}`. Optional `answerId` must come from this session/snapshot; optional `briefId` must exist there. A bookmark copies the saved answer so later history eviction does not erase it. There is no bookmark-list/delete endpoint yet.
+- `GET /api/notebook?snapshotId=...` downloads `text/markdown; charset=utf-8` with `Content-Disposition: attachment; filename=astrolabe-notebook.md`. Preserve response text rather than calling `.json()`. Optional `againstSnapshotId` adds conservative freshness annotations for another snapshot of the same repository. Original commit links remain pinned.
+- `POST /api/snapshots/compare` with `{"fromSnapshotId":"mitt-f9a0b5397edf","toSnapshotId":"mitt-05f4ce67e8f1"}` returns `{fromSnapshotId,toSnapshotId,changes,content,limitations}`. File changes include path/kind/beforeHash/afterHash; content entries include contentId/kind/state/affectedPaths/reviewState. Changed cited files mark dependent content `needs_review`, including formatting-only changes. Different repositories fail with HTTP 409 `REPOSITORY_MISMATCH`; there is no automatic line remapping.
+
+### Session and request handling
+
+Use same-origin fetch (default cookie handling) or `credentials:"same-origin"`; do not read or generate session IDs in client code. Successful session endpoints issue `mentor_session=<signed-token>` when needed: HttpOnly, SameSite=Lax, Path=/, Max-Age=604800, and Secure for HTTPS. Invalid/tampered cookies establish a fresh anonymous session. Keep database and signing secret stable across restarts. Browser cookie expiry is seven days; this prototype does not provide account login or a server-side token-expiry/revocation service.
+
+Session endpoint success responses use `Cache-Control: no-store`. Do not persist session responses in a shared cache. Errors use `{error:{code,message,details?}}`; check HTTP status before interpreting the payload. Generic JSON request limit is 8,192 bytes, Q&A 4,096 bytes and bookmarks 12,000 bytes. Use `Content-Type: application/json`; hints and reset do not parse a JSON body. The Gemini timeout is 12 seconds. `liveConfigured:true` reports configuration only.
+
+`POST /api/session/reset` returns `{"ok":true}`. It clears attempts, hints and teach-back across this session's snapshots. It preserves saved answer history, bookmarks, goals, walkthrough position and all other sessions. It does not clear browser localStorage. Explain this accurately in reset UI.
+
+Snapshot selection must come from `/api/snapshots`. Omitted optional query IDs select Zustand; empty or wrong IDs fail. Include the selected snapshot explicitly on every source/evidence/learning/history/notebook request. File/evidence IDs cannot cross snapshots. Never substitute current source for an old answer's citations. The default UI currently omits these query IDs and therefore remains a Zustand interface.
+
+### Exact UI-owner work remaining
+
+1. Resolve the two pre-existing asynchronous UI/test synchronization failures described below, preserving the range and keyboard assertions. Expose/await completed evidence navigation before submitting a selected-range question; avoid focus transfer from a disabled control while source is loading. The current UI allows a stale source range to be sent during citation loading.
+2. Connect snapshot selection to every API and namespace browser state by snapshot/content version; replace hardcoded source filenames/ranges with returned metadata. Reject late responses for obsolete context.
+3. Render observed/inferred/unknown blocks with their own citations, authored/generated labels and limitations. Keep existing mode compatibility while explaining that authored material has no completed independent human review. Preserve the added metadata in browser history or use signed-session history.
+4. Connect architecture/reading order, saved goals and contribution remediation, teach-back submission/self-review/follow-ups, bookmarks/Markdown export, saved walkthrough position and manual snapshot comparison/freshness. These backend APIs do not yet establish completed screen features.
+5. Add accurate reset wording and blocked/unavailable/validation states. A saved answer uses its original context and commit; citation integrity and self-assessment are not proof of correctness or mastery. Server bookmark deletion/listing and teach-back listing would require further backend API work if the UI needs them.
+
 ## Verify locally
 
 ```sh
@@ -87,6 +177,8 @@ npm run verify:live
 ```
 
 `verify:live` explicitly loads `.env.local` if present, disables prepared matching/cache and writes a timestamped report under `.data/verification/`. If no key exists, it writes a blocked record, makes no provider request and exits 2. It never prints the credential. Live results still need independent source review.
+
+`npm run verify` is the requested alias for `verify:live`; it also disables prepared matching and cache. Blocked records explicitly include `preparedMatching:false`, `cache:false` and `liveRequests:0`. No credential was configured during the follow-up, so live evidence and uncertainty inspection remain blocked. Mock-provider schema/citation tests are separate checks, not real-provider verification.
 
 `verify:http` starts a loopback production server on an available port with a separate database and signing-key directory under `.data/verification/http-<timestamp>/`. It disables live AI, waits for readiness, runs HTTP assertions, restarts the process to check durable sessions, and stops its server. Its JSON report and server log remain in that directory. Build first; the command never contacts Gemini or resets the normal demonstration database.
 
@@ -136,6 +228,38 @@ Real Gemini success, independent human review and participant outcomes cannot be
 - `npm run verify:live`: wrote `status: blocked`, `reason: missing_server_credential`, `liveRequests: 0`. No real Gemini success or latency was verified.
 
 Lexical retrieval is not a semantic support test. In production HTTP verification, the PostgreSQL migration question matched Zustand's persisted-state migration text and returned `unavailable` with no citations because Gemini was absent. The unrelated Kubernetes question returned `evidence_gap`. Neither outcome establishes factual correctness. Independent human review, real participant trials and live-provider verification remain pending. Teach-back remains learner self-assessment, not an automatic mastery score. New API capabilities still need UI integration by the UI owner.
+
+## Follow-up investigation — 2026-10-16
+
+Continued from clean checkpoint `21c8527` on `codex/backend-mentor-recovery`. Both affected tests were rerun unchanged against the recovery branch and an isolated copy of upstream `bf61b7d`, with the same Node 24.20.0, pinned dependency versions, Chromium 156 / Playwright 1.64.1, fresh browser contexts, separate databases, blank provider keys and the existing assertion timeouts. API routes were warmed before the comparison; no assertions, UI code or browser tests were changed.
+
+Both original failures reproduced identically on both branches. They are **pre-existing UI/test synchronization defects**, exposed by asynchronous source/evidence loading; neither is a backend regression. Development compilation affects timing but does not explain away the unsupported focus/range assumptions.
+
+1. **`explicit question scopes preserve answers, original context and history while inspecting citations`**, `tests/e2e/journey.spec.ts:151`:
+
+   ```text
+   Error: expect(received).toMatchObject(expected)
+   Expected: { fileId: "file_2a08e62fa7ce2a79a93d", startLine: 66, endLine: 81 }
+   Received: { fileId: "file_2a08e62fa7ce2a79a93d", startLine: 88, endLine: 92 }
+   ```
+
+   Root cause: `useWorkspace.openEvidence` awaits evidence and source HTTP requests before `openFile` updates `range`. The citation click returns before that work finishes. The test immediately checks Selected lines and submits; `QuestionPanel` constructs the request from the still-current 88–92 range, without receiving a source-loading guard. In the original trace, the 66–81 evidence request started at monotonic 70,129.668 ms and took 729.483 ms; the question POST began at 70,341.350 ms, while navigation was pending. The server received the stale range; it did not rewrite the requested range. UI work: coordinate pending evidence navigation and submission; test-owner work: synchronize with completed source/context navigation while retaining the exact outgoing-range assertion.
+
+2. **`four scope controls fit mobile, support keyboard selection and retain walkthrough answers after source inspection`**, `tests/e2e/walkthrough-scope.spec.ts:115`:
+
+   ```text
+   Error: expect(locator).toBeFocused() failed
+   Locator: locator('.mentor-scope-options').getByRole('radio', { name: 'This walkthrough', exact: true })
+   Expected: focused
+   Timeout: 5000ms
+   Error: element(s) not found
+   ```
+
+   Root cause: the helper checks the guide title, which updates before source/range loading completes. At `.focus()` the Selected lines radio is still disabled (`disabled` is present in the trace snapshot), so focus stays on the Mentor workspace tab. ArrowRight reaches that tab's `onKeyDown`, cycles to Files & flow and hides the mentor panel; the expected walkthrough radio is no longer visible to the role locator. The source eventually completes and enables Selected lines, after the wrong keyboard target has already handled the key. UI/test-owner work: coordinate source readiness and valid focus before keyboard traversal, preserving the focus and checked assertions. This is not a provider, database or backend-response failure.
+
+An initial cold recovery run also timed out at the overview heading while the page still said “Opening the prepared repository…”; that is a separate dev-startup timing condition. An initial baseline fixture could not load hash-checked sources because Windows archive conversion changed line endings; the baseline's source/license bytes were restored directly from the upstream Git blobs and verified against its manifest before the valid comparison above. A temporary dependency junction was rejected by Turbopack; it was replaced by an independent installation of the same pinned versions. These setup attempts were not used to classify the original failures.
+
+Follow-up changes: added `npm run verify` as an alias for the existing prepared-disabled live verifier, made disabled prepared/cache flags explicit in missing-key records, and expanded this API handoff. No backend runtime regression was found or patched. Follow-up results: **107/107 automated tests passed**, TypeScript passed, production build passed and the rebuilt production server passed **16/16 HTTP check groups**, including process restart. `npm run verify` recorded missing credential, zero live requests, prepared matching disabled and cache disabled. The affected browser reruns remain **0/2 passing** on both branches; the prior full suite result remains 8/10, not a newly rerun full-suite result. Human review, peer study and real-provider evidence/uncertainty inspection remain pending.
 
 ## Delivery boundary
 
