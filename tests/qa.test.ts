@@ -19,6 +19,7 @@ import {
 } from "@/lib/retrieval";
 import { getSnapshot, getSource, listFiles } from "@/lib/repository";
 import { POST as questionRoute } from "@/app/api/questions/route";
+import { modelJsonSchema } from "@/lib/ai/schema";
 
 function fixture(snapshotId = "snapshot-a") {
   const snapshot: Snapshot = {
@@ -341,8 +342,34 @@ describe("Gemini adapter", () => {
       evidence[0].text,
     );
     expect(body.generationConfig.responseFormat.text.mimeType).toBe(
-      "application/json",
+      "APPLICATION_JSON",
     );
+  });
+
+  it("uses the documented Gemini text-format enum while preserving JSON HTTP headers", async () => {
+    const { store } = fixture();
+    const output = {
+      status: "evidence_gap",
+      blocks: [{ text: "Not established.", kind: "unknown", evidenceIds: [] }],
+      limitations: [],
+    };
+    const mockFetch = vi.fn(async () => Response.json({
+      candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(output) }] } }],
+    }));
+    const result = await createGeminiProvider({ apiKey: "test-only-key", fetch: mockFetch as typeof fetch })({
+      input, evidence: [store.evidenceForRange("file-a", 1, 3)],
+    });
+    const [url, request] = mockFetch.mock.calls[0] as unknown as [string, RequestInit];
+    // https://ai.google.dev/api/generate-content#TextResponseFormat uses an enum,
+    // unlike the HTTP Content-Type header, which remains a MIME string.
+    expect(request.method).toBe("POST");
+    expect(new Headers(request.headers).get("Content-Type")).toBe("application/json");
+    expect(JSON.parse(request.body as string).generationConfig.responseFormat).toEqual({
+      text: { mimeType: "APPLICATION_JSON", schema: modelJsonSchema },
+    });
+    expect(url).not.toContain("test-only-key");
+    expect(request.body).not.toContain("test-only-key");
+    expect(result).toEqual(output);
   });
 
   it("bounds timeout even when the fetch implementation ignores AbortSignal", async () => {

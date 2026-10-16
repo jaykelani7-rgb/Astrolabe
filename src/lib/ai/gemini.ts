@@ -71,7 +71,7 @@ export function createGeminiProvider(
               temperature: 0.1,
               maxOutputTokens: 1800,
               responseFormat: {
-                text: { mimeType: "application/json", schema: modelJsonSchema },
+                text: { mimeType: "APPLICATION_JSON", schema: modelJsonSchema },
               },
             },
           }),

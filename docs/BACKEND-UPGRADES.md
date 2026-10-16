@@ -1,5 +1,13 @@
 # Backend upgrade handoff
 
+## Gemini adapter correction — 17 October 2026
+
+Local changes on `krishna` correct `generationConfig.responseFormat.text.mimeType` from the HTTP MIME string to the API enum `APPLICATION_JSON`. The actual HTTP Content-Type remains `application/json`; schemas, citation validation, evidence-gap handling and the 12-second deadline are unchanged. The documented HTTP 400 was freshly reproduced. A new outgoing-request regression failed before the correction and passed afterward. All 151 automated tests, TypeScript, production build and 19 production HTTP groups passed.
+
+Prepared/cache-disabled live verification was rerun through the real adapter. Gemini 3.8 and 3.7 returned intermittent high-demand 503s/timeouts; neither verifier run produced an answered result, so both exited 1. Separately, the production Astrolabe endpoint returned real uncached source answers: Gemini 3.8 answered selector callbacks and combine precedence, and Gemini 3.7 answered combine. Canonical evidence and source text matched. Implementation review found the reviewed selector/merge claims supported by the cited pinned ranges; this is a limited agent review, not independent human approval or a correctness benchmark. Fresh cross-file requests remained unavailable, so cross-file factual review is still blocked. Unsupported questions returned evidence gaps.
+
+Only GEMINI_MODEL was changed in ignored `.env.local`, explicitly to `gemini-3.7-flash` after an availability probe; the key and other settings are preserved. It also experienced provider-side failures. No automatic fallback or timeout extension was added. Port 3310 remains running with existing preview data. The previously documented mobile teach-back reload race is unchanged; browser checks were not rerun for this server-only enum change. No push, main merge or deployment was performed. Earlier missing-key and HTTP 400 reports below are historical; current blockers are provider availability and incomplete live cross-file verification.
+
 ## Current integration — 16 October 2026
 
 Local `krishna` was safely fast-forwarded from `c82a71bf3478bfad516725dc0b47975b2739f3ed` to the fetched `origin/walkthrough-qa` at `7e3ad3df91f8abed1fa36072e2f65d480ef97062`. That includes integration commit `5269d665a73f73945c00553a19a551a28ffe0b70` and the teammate's teach-back follow-up. No recovery patch was reapplied. The newer UI, architecture panel, claim rendering, source-loading safeguards, LM Studio adapter and teach-back resume flow are preserved. Current work is local only; no push, main merge, deployment or PR is authorized by this development request.
