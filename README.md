@@ -35,6 +35,7 @@ Run these from the project root. Do not run development and production servers f
 - Four prediction tasks: two choices, one ordering exercise, and one source-range exercise. An attempt is required before feedback. Scoring and rubrics stay on the server.
 - Recorded hints, retries, first-attempt correctness, completion, topics to revisit, and two bounded documentation contribution briefs.
 - Contextual Q&A with source retrieval, structured Gemini output, citation validation, timeout handling and explicit evidence-gap/unavailable states. A small set of prepared answers is visibly labeled **Reviewed answer**, and live output is labeled **Live AI answer**.
+- Walkthrough-aware Q&A: while following a guide, choose **This walkthrough** to use reviewed source targets from its steps across files, with the current step prioritized. **Selected source** keeps the existing file/range behavior.
 - Signed anonymous session cookies, persistent SQLite attempts and session-scoped reset. Reset your practice data from **Your progress → Reset this learning session**.
 
 “Reviewed” identifies versioned, source-checked prepared material. Implementation agents checked its source references; **independent human claim review is still pending**. Citation integrity is not proof that an explanation is semantically correct.
@@ -60,6 +61,8 @@ Try these prepared questions while viewing the relevant file (clear unrelated li
 | `src/vanilla.ts` or `src/react.ts` | What is getInitialState? |
 
 A question about an absent PostgreSQL migration engine produces an evidence gap. A plausible source question that has no matching prepared answer reports live AI unavailable without a key. Prepared matches respect the selected file and range; the app does not silently substitute an answer about unrelated source.
+
+For a walkthrough-scoped example, open **From a store to a React selection**, stay on **Reuse the vanilla store**, choose **This walkthrough**, then ask **What is getInitialState?**. The prepared answer can cite both `src/react.ts` and `src/vanilla.ts` from later reviewed steps. The original selected-source mode remains available. A prepared answer is used in walkthrough mode only when all its cited ranges fit inside the supplied walkthrough evidence. Other questions still need live AI; choosing a walkthrough does not generate an answer by itself.
 
 ## Data and restart behavior
 
@@ -130,7 +133,7 @@ All route handlers run in the Node.js runtime. Errors use `{ "error": { "code": 
 | `POST /api/questions` | Contextual Q&A response with explicit status and mode |
 | `POST /api/session/reset` | Clear only the current session's practice data |
 
-Question bodies are limited to 4 KB; general JSON requests are bounded to 8 KB. Snapshot mismatches, absent files/evidence, malformed answers, invalid ranges and provider failure return explicit outcomes. The local prototype prevents accidental answer reveal, not inspection by someone who controls its source or database.
+Question bodies are limited to 4 KB; general JSON requests are bounded to 8 KB. Question input accepts either source context (`fileId` and optional line range) or walkthrough context (`guideId` and optional `stepId`), not both. Unknown guides/steps and snapshot mismatches fail explicitly. Walkthrough context is resolved on the server from versioned public guide evidence; task rubrics and answer keys are not sent to the provider. Context limits, citation validation and live cache isolation also apply to walkthrough questions. Other absent files/evidence, malformed answers, invalid ranges and provider failure return explicit outcomes. The local prototype prevents accidental answer reveal, not inspection by someone who controls its source or database.
 
 ## Boundaries
 

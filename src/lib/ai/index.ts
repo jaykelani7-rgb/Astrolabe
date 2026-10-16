@@ -30,13 +30,18 @@ export async function answerQuestion(rawInput: QuestionInput, options: AnswerOpt
   // A prepared answer only matches an explicit known question and the same source context.
   if (options.prepared !== false) {
     const prepared = reviewedAnswer(input, store);
-    if (prepared) return prepared;
+    const withinWalkthrough = prepared?.citations.every((citation) => context.evidence.some((range) =>
+      range.fileId === citation.fileId && range.startLine <= citation.startLine && range.endLine >= citation.endLine));
+    if (prepared && (!context.walkthrough || withinWalkthrough)) {
+      return context.walkthrough ? { ...prepared, limitations: [...prepared.limitations, ...context.limitations] } : prepared;
+    }
   }
   if (!context.evidence.length) return gap(context.limitations);
 
   const cacheKey = JSON.stringify({
     snapshot: input.snapshotId, file: input.fileId ?? '', start: input.startLine ?? null, end: input.endLine ?? null,
     depth: input.depth ?? 'beginner', question: input.question.trim().toLowerCase(),
+    guide: input.guideId ?? '', step: input.stepId ?? '',
     model: process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
     configured: Boolean(process.env.GEMINI_API_KEY?.trim()),
     evidence: context.evidence.map((item) => [item.evidenceId, item.contentHash]),
@@ -49,7 +54,7 @@ export async function answerQuestion(rawInput: QuestionInput, options: AnswerOpt
     if (cached) cache.delete(cacheKey);
   }
   try {
-    const raw = await (options.provider ?? createGeminiProvider())({ input, evidence: context.evidence });
+    const raw = await (options.provider ?? createGeminiProvider())({ input, evidence: context.evidence, walkthrough: context.walkthrough });
     const parsed = modelAnswerSchema.safeParse(raw);
     if (!parsed.success) return gap([...context.limitations, 'The AI response failed structured validation and was withheld.']);
     const model = parsed.data;

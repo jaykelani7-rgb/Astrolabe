@@ -1049,6 +1049,8 @@ export function MentorWorkspace() {
                         document={document}
                         range={range}
                         depth={depth}
+                        guide={view === "guides" ? activeGuide : undefined}
+                        step={view === "guides" ? activeStep : undefined}
                         onEvidence={(id) => void openEvidence(id, true)}
                       />
                     </aside>

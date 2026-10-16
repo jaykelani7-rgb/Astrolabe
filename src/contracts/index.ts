@@ -134,6 +134,14 @@ export interface QuestionInput {
   startLine?: number;
   endLine?: number;
   depth?: Depth;
+  guideId?: string;
+  stepId?: string;
+}
+export interface WalkthroughContext {
+  guideId: string;
+  title: string;
+  stepId?: string;
+  stepTitle?: string;
 }
 export interface QaResponse {
   status: "answered" | "evidence_gap" | "unavailable";
@@ -172,6 +180,8 @@ export const questionSchema = z
     startLine: z.number().int().positive().optional(),
     endLine: z.number().int().positive().optional(),
     depth: z.enum(["beginner", "developer"]).optional(),
+    guideId: z.string().min(1).max(120).optional(),
+    stepId: z.string().min(1).max(120).optional(),
   })
   .strict()
   .refine((v) => (v.startLine === undefined) === (v.endLine === undefined), {
@@ -179,4 +189,10 @@ export const questionSchema = z
   })
   .refine((v) => !v.startLine || (!!v.fileId && v.endLine! >= v.startLine), {
     message: "A valid file and ordered lines are required.",
+  })
+  .refine((v) => !v.stepId || !!v.guideId, {
+    message: "A walkthrough is required for a step.",
+  })
+  .refine((v) => !v.guideId || !v.fileId, {
+    message: "Choose either source or walkthrough context.",
   });

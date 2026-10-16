@@ -1364,6 +1364,37 @@ button:disabled:hover {
   padding: 5px 7px;
   margin-top: 14px;
 }
+.qa-scope {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 4px;
+  border: 1px solid #303640;
+  border-radius: 7px;
+  background: #14181f;
+}
+.qa-scope button {
+  flex: 1;
+  min-height: 32px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #9da3ae;
+  font-size: 10px;
+  background: transparent;
+}
+.qa-scope button[aria-pressed="true"] {
+  border-color: #806b4b;
+  color: #efc58c;
+  background: #3b3021;
+}
+.qa-scope button:focus-visible {
+  outline: 2px solid #efc58c;
+  outline-offset: 2px;
+}
+.qa-panel > .qa-scope-help {
+  margin-top: 8px;
+}
 .live-dot {
   height: 4px;
   width: 4px;
