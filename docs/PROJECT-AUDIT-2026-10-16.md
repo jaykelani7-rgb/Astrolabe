@@ -1,5 +1,7 @@
 # Astrolabe project audit — 16 October 2026
 
+**Historical audit:** for the current team status, delivered teach-back interface and Git handoff, read [TEAM-PROGRESS.md](TEAM-PROGRESS.md). Counts and merge status below describe the earlier audit.
+
 Current follow-up: [local retrieval and answer-quality work](AI-QUALITY-2026-10-16.md) records 132 passing service tests and 12/16 generated development answers, with four gaps. Q01 still needs correction and several explanations remain incomplete; coverage is not accuracy. The sections below retain the initial audit evidence.
 
 The original MVP learner path is implemented; the verification/freeze gate remains open because answer quality and independent evaluation are incomplete. New backend additions extend beyond the original MVP.

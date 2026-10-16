@@ -135,13 +135,16 @@ All route handlers run in the Node.js runtime. Errors use `{ "error": { "code": 
 | `GET /api/results`                      | Current session summary and contribution briefs                                                   |
 | `POST /api/questions`                   | Contextual Q&A response with explicit status and mode                                             |
 | `GET /api/questions/status`             | Prepared availability and whether the selected live provider is configured; provider health remains unverified    |
+| `GET /api/teach-back?taskId=...&snapshotId=...&contentVersion=...` | Current-version rubric availability and latest session-private saved explanation/review |
+| `POST /api/teach-back` | Save an explanation after a prediction; return self-review concepts |
+| `POST /api/teach-back/review` | Record every concept assessment and return source-linked practice |
 | `POST /api/session/reset`               | Clear only the current session's practice data                                                    |
 
 Question bodies are limited to 4 KB; general JSON requests are bounded to 8 KB. Q&A accepts either source context (`fileId` with optional `startLine`/`endLine`) or walkthrough context (`guideId` with optional `stepId`), never both. Empty file IDs and orphan/unknown steps fail explicitly. Walkthrough evidence is resolved from the pinned reviewed guide on the server. Snapshot mismatches, absent files/evidence, malformed answers, invalid ranges and provider failure return explicit outcomes. The local prototype prevents accidental answer reveal, not inspection by someone who controls its source or database.
 
 ## Backend upgrade APIs
 
-See [the backend handoff](docs/BACKEND-UPGRADES.md) for claim-linked responses, architecture, signed-session server history, teach-back, goal-based briefs, notebook export and snapshot comparison. The upstream UI redesign and walkthrough Q&A are preserved; new backend features still need their separate interface integration. Zustand remains the default, and two pinned mitt snapshots provide separate learning packs. Run `npm run verify:live` for provider verification.
+See [the backend handoff](docs/BACKEND-UPGRADES.md) for claim-linked responses, architecture, signed-session server history, teach-back, goal-based briefs, notebook export and snapshot comparison. The upstream UI redesign and walkthrough Q&A are preserved; teach-back is now connected after supported predictions; goals, notebooks and snapshot controls still need interface integration. Zustand remains the default, and two pinned mitt snapshots provide separate learning packs. Run `npm run verify:live` for provider verification.
 
 ## Boundaries
 
@@ -164,11 +167,11 @@ The integration preserves the redesign rather than replacing it with the branch'
 
 ## Current integration and audit — 16 October 2026
 
-The local `walkthrough-qa` integration includes `main` through `bf61b7d` and the authorized `krishna` backend through `c82a71b`. The merge is intentionally uncommitted for the owner. See [the current audit](docs/PROJECT-AUDIT-2026-10-16.md) and [ordered next steps and ownership](docs/NEXT-STEPS.md).
+The local `walkthrough-qa` integration includes `main` through `bf61b7d` and the authorized `krishna` backend through `c82a71b`. The owner committed and pushed that integration as `5269d66`. Follow-up feature changes remain for owner review and commit. See [the current team audit](docs/TEAM-PROGRESS.md) and [ordered next steps and ownership](docs/NEXT-STEPS.md).
 
 The overview now exposes an authored architecture summary and reading order, with source navigation. Q&A renders observed/inferred/unknown blocks with each block's source links and retains this metadata in browser history. Prepared answers explicitly say independent human review is pending. File/selection questions wait for pending source navigation to finish. The browser suite includes delayed-navigation regression coverage.
 
-The backend also supports two pinned mitt snapshots, snapshot-isolated learning, saved answer history, learner goals, contribution ranking, teach-back self-assessment, notebooks and manual freshness comparison. Except for architecture and answer blocks, these additions still need their website controls. The website continues to open the Zustand snapshot. Backend endpoints alone do not establish a completed multi-repository or teach-back interface. See [the backend contract](docs/BACKEND-UPGRADES.md).
+The backend also supports two pinned mitt snapshots, snapshot-isolated learning, saved answer history, learner goals, contribution ranking, teach-back self-assessment, notebooks and manual freshness comparison. Architecture, answer blocks and teach-back now have website controls. After attempting a supported prediction, save an explanation, assess every concept and follow its source-linked practice. Saved explanations and reviews resume in the same anonymous session. Goals, ranked contributions, notebooks and snapshot selection/comparison still need website controls. The website continues to open the Zustand snapshot. See [teach-back verification and limits](docs/TEACH-BACK-UI.md). See [the backend contract](docs/BACKEND-UPGRADES.md).
 
 ### Local AI on this Mac
 

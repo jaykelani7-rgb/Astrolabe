@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Depth, Evidence, Feedback, PublicTask } from '@/contracts';
 import './missions.css';
+import { TeachBackPanel } from './TeachBackPanel';
 
 type Range = { fileId: string; startLine: number; endLine: number };
 type Progress = { feedback: Feedback | null; hintsUsed: number; hint?: string };
@@ -13,6 +14,7 @@ interface MissionProps {
   onComplete: () => void;
   selectedRange?: Range;
   onContinue?: () => void;
+  onTask?: (taskId: string) => void;
   continueLabel?: string;
 }
 
@@ -23,7 +25,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return value;
 }
 
-export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRange, onContinue, continueLabel = 'Continue walkthrough' }: MissionProps) {
+export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRange, onContinue, onTask, continueLabel = 'Continue walkthrough' }: MissionProps) {
   const [task, setTask] = useState<PublicTask | null>(null);
   const [choice, setChoice] = useState('');
   const [order, setOrder] = useState<string[]>([]);
@@ -129,6 +131,7 @@ export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRa
       {hintCount > feedback.hintsUsed && <p className="mission-note">{hintCount} hint requests are now recorded for this checkpoint.</p>}
       <div className="mission-feedback-actions">{onContinue && <button type="button" className="primary-button" onClick={onContinue}>{continueLabel} →</button>}<button type="button" className="text-button" onClick={() => setFeedback(null)}>{feedback.correct ? 'Try this checkpoint again' : 'Make another attempt'}</button></div>
     </div>}
+    {feedback && <TeachBackPanel key={`${task.snapshotId}:${task.contentVersion}:${task.id}`} task={task} onEvidence={onEvidence} onTask={id => { if (id === task.id) setFeedback(null); else onTask?.(id); }} />}
     {error && <p role="alert" className="mission-warning">{error}</p>}
   </section>;
 }

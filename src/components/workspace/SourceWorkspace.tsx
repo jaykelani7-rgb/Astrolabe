@@ -434,6 +434,7 @@ export function SourceWorkspace({ workspace: w }: { workspace: Workspace }) {
                   </div>
                   <MissionPanel
                     taskId={w.activeTaskId}
+                    onTask={w.openCheckpoint}
                     depth={w.depth}
                     selectedRange={
                       w.document && w.range

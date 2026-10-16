@@ -33,7 +33,7 @@ import { answerQuestion } from "@/lib/ai";
 import { architectureOverview } from "@/lib/architecture";
 import { compareSnapshots } from "@/lib/snapshots";
 import { getTask, publicLearning, submitAttempt } from "@/lib/learning";
-import { submitTeachBack, reviewTeachBack } from "@/lib/learning/teach-back";
+import { submitTeachBack, reviewTeachBack, teachBackProgress } from "@/lib/learning/teach-back";
 import {
   storeAnswer,
   answerHistory,
@@ -46,6 +46,8 @@ import {
 import { POST as questionRoute } from "@/app/api/questions/route";
 import { GET as historyRoute } from "@/app/api/questions/history/route";
 import { GET as notebookRoute } from "@/app/api/notebook/route";
+import { GET as teachBackRoute } from "@/app/api/teach-back/route";
+import { getSession } from "@/lib/learning/session";
 import { GET as taskRoute } from "@/app/api/tasks/[id]/route";
 const dir = mkdtempSync(path.join(tmpdir(), "astrolabe-upgrades-"));
 const mittOld = "mitt-f9a0b5397edf",
@@ -411,6 +413,30 @@ describe("versioned learning and honest teach-back", () => {
         })),
       }),
     ).toThrow(/does not belong/);
+  });
+  it("resumes only current-version explanations from the signed session, including reviews, and clears them on reset", async () => {
+    const task = getTask("same-reference");
+    const request = new Request("http://localhost/api/teach-back");
+    const session = getSession(request);
+    const input = { taskId: task.id, snapshotId: task.snapshotId, contentVersion: task.contentVersion! };
+    const url = `http://localhost/api/teach-back?${new URLSearchParams(input)}`;
+    submitAttempt(session.id, task.id, { snapshotId: task.snapshotId, answer: "skip" });
+    const submission = submitTeachBack(session.id, { ...input, text: "The guard skips the block when the object identity is unchanged." });
+    const ownRequest = () => new Request(url, { headers: { cookie: session.cookie!.split(";")[0] } });
+    const own = await teachBackRoute(ownRequest());
+    expect(own.headers.get("Cache-Control")).toBe("no-store");
+    expect(await own.json()).toMatchObject({ available: true, submission: { id: submission.id, snapshotId: task.snapshotId } });
+    expect(await (await teachBackRoute(new Request(url))).json()).toMatchObject({ submission: null });
+    reviewTeachBack(session.id, { snapshotId: task.snapshotId, submissionId: submission.id, assessments: submission.concepts.map(c => ({ conceptId: c.id, state: "uncertain" })) });
+    expect(await (await teachBackRoute(ownRequest())).json()).toMatchObject({ submission: { status: "self_reviewed", followUps: expect.any(Array) } });
+    expect((await teachBackRoute(new Request(url.replace(task.contentVersion!, "old-version")))).status).toBe(409);
+    const second = submitTeachBack(session.id, { ...input, text: "A revised explanation of the guard and listeners." });
+    expect(teachBackProgress(session.id, input).submission?.id).toBe(second.id);
+    resetSession(session.id);
+    expect(teachBackProgress(session.id, input).submission).toBeNull();
+    const unsupported = getTask("update-order");
+    expect(teachBackProgress(session.id, { taskId: unsupported.id, snapshotId: unsupported.snapshotId, contentVersion: unsupported.contentVersion! }).available).toBe(false);
+    expect(teachBackProgress(session.id, { taskId: "mitt-dispatch-order", snapshotId: mittOld, contentVersion: getTask("mitt-dispatch-order", mittOld).contentVersion! }).submission).toBeNull();
   });
   it("stores goals and recommends prerequisite review before a contribution", () => {
     const session = randomUUID(),

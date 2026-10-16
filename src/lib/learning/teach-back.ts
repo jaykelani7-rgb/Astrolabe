@@ -3,7 +3,8 @@ import { z } from "zod";
 import { AppError } from "@/lib/api";
 import { getTask, sessionResults } from "@/lib/learning";
 import { getEvidence } from "@/lib/repository";
-import { saveRecord } from "@/lib/db";
+import { getRecords, saveRecord } from "@/lib/db";
+import type { TeachBackProgress, TeachBackSubmission } from "@/contracts";
 export const teachBackSchema = z
   .object({
     taskId: z.string().min(1).max(100),
@@ -55,7 +56,7 @@ const concepts: Record<
     },
   ],
 };
-export function submitTeachBack(sessionId: string, raw: unknown) {
+export function submitTeachBack(sessionId: string, raw: unknown): TeachBackSubmission {
   const input = teachBackSchema.parse(raw),
     task = getTask(input.taskId, input.snapshotId);
   if (input.contentVersion !== task.contentVersion)
@@ -82,7 +83,8 @@ export function submitTeachBack(sessionId: string, raw: unknown) {
       404,
     );
   // Free-text keyword matching cannot establish understanding. Return rubric-guided self review, not an invented score.
-  const payload = {
+  const payload: Omit<TeachBackSubmission, "id"> = {
+    snapshotId: task.snapshotId,
     taskId: task.id,
     contentVersion: task.contentVersion,
     text: input.text,
@@ -120,8 +122,7 @@ export function rubricEvidence(taskId: string, snapshotId: string) {
   );
 }
 
-import { getRecords } from "@/lib/db";
-export function reviewTeachBack(sessionId: string, raw: unknown) {
+export function reviewTeachBack(sessionId: string, raw: unknown): TeachBackSubmission & { followUps: NonNullable<TeachBackSubmission["followUps"]> } {
   const input = teachBackReviewSchema.parse(raw);
   const record = getRecords<Omit<ReturnType<typeof submitTeachBack>, "id">>(
     sessionId,
@@ -135,6 +136,9 @@ export function reviewTeachBack(sessionId: string, raw: unknown) {
       404,
     );
   const original = record.payload;
+  const task = getTask(original.taskId, input.snapshotId);
+  if (task.contentVersion !== original.contentVersion)
+    throw new AppError("CONTENT_VERSION_MISMATCH", "Reload this checkpoint before reviewing it.", 409);
   const rubric = concepts[original.taskId];
   if (
     input.assessments.length !== rubric.length ||
@@ -161,8 +165,9 @@ export function reviewTeachBack(sessionId: string, raw: unknown) {
       taskId: item.followUpTaskId,
       evidenceIds: original.evidenceIds,
     }));
-  const payload = {
+  const payload: Omit<TeachBackSubmission, "id"> & { followUps: NonNullable<TeachBackSubmission["followUps"]> } = {
     ...original,
+    snapshotId: input.snapshotId,
     status: "self_reviewed",
     concepts: assessed,
     followUps,
@@ -179,4 +184,21 @@ export function reviewTeachBack(sessionId: string, raw: unknown) {
     input.submissionId,
   );
   return { id: input.submissionId, ...payload };
+}
+
+export const teachBackProgressSchema = teachBackSchema.pick({ taskId: true, snapshotId: true, contentVersion: true });
+
+export function teachBackProgress(sessionId: string, raw: unknown): TeachBackProgress {
+  const input = teachBackProgressSchema.parse(raw);
+  const task = getTask(input.taskId, input.snapshotId);
+  if (task.contentVersion !== input.contentVersion)
+    throw new AppError("CONTENT_VERSION_MISMATCH", "Reload this checkpoint before explaining it.", 409);
+  const record = getRecords<Omit<TeachBackSubmission, "id">>(sessionId, task.snapshotId, "teach_back")
+    .filter(entry => entry.payload.taskId === task.id && entry.payload.contentVersion === task.contentVersion)
+    .at(-1);
+  return {
+    taskId: task.id, snapshotId: task.snapshotId, contentVersion: input.contentVersion,
+    available: Boolean(concepts[task.id]),
+    submission: record ? { ...record.payload, id: record.id, snapshotId: task.snapshotId } : null,
+  };
 }

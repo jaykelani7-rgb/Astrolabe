@@ -4,11 +4,11 @@ Updated 16 October 2026. Use the current implementation and `PROJECT-AUDIT-2026-
 
 ## Current follow-up
 
-The local definition-retrieval step is delivered: see `AI-QUALITY-2026-10-16.md`. Keep Q01 and the incomplete mechanism explanations in the review queue. The next UI feature is teach-back after an attempted prediction, followed by saved goals and contribution remediation.
+The local definition-retrieval step is delivered: see `AI-QUALITY-2026-10-16.md`. Keep Q01 and the incomplete mechanism explanations in the review queue. Teach-back is now connected after an attempted prediction, including saved explanations, per-concept self-review, source-linked follow-ups and resume support. See `TEACH-BACK-UI.md`. The next UI feature is saved goals and contribution remediation.
 
 ## Start here
 
-1. Review the pending integration on `walkthrough-qa`. It includes `main` through bf61b7d and the authorized `krishna` branch through c82a71b. The owner commits and pushes. Do not repeat backend work already integrated.
+1. The owner committed and pushed the integration on `walkthrough-qa` as `5269d66`, including `main` through bf61b7d and the authorized `krishna` branch through c82a71b. Review the new teach-back changes before the next owner commit. Do not repeat backend work already integrated.
 2. Freeze the source/evidence, question scopes, answer blocks and learning version contracts before starting concurrent UI work. Agree on one owner for shared contracts and client workspace state.
 3. Review real local-model answers against their source. Passing citation checks does not establish factual correctness. Preserve raw results and classify retrieval misses, invalid output, unsupported claims and correct refusals separately.
 4. Build a single teach-back-to-contribution journey. Finish its error/loading/reset behavior and browser checks before adding more screens.
@@ -19,8 +19,8 @@ The local definition-retrieval step is delivered: see `AI-QUALITY-2026-10-16.md`
 | Owner | Work, in order | Boundary and completion check |
 | --- | --- | --- |
 | You: A + C | Maintain integration and website QA; review the local model's development answers; improve retrieval only for measured misses; then integrate claim-review corrections and rehearse the demo. | Preserve exact selection/file boundaries, fail closed on malformed citations, and keep local inference separate from cloud. A fresh local answer must open its actual source, retain its history and show honest unavailable/gap states. |
-| Teammate: D | Connect teach-back after a prediction; show the returned concepts and require learner self-assessment; display concept-specific follow-ups; then connect saved goals and ranked contribution remediation. | Use `/api/teach-back`, `/api/teach-back/review`, `/api/learning/goal`, `/api/contributions`. Never call self-assessment an automatic mastery score. Keep task/snapshot/version identifiers and reject late responses. |
-| Teammate: B, after the core journey | Add list/read APIs for saved teach-back submissions and bookmarks if resuming those screens requires them; help wire notebooks and snapshot selection. | Session-private, snapshot-scoped responses; no answer-key leaks; historical citations stay on the original commit. Coordinate schema migrations and shared contracts with you. |
+| Teammate: D | Review the delivered teach-back journey; then connect saved goals and ranked contribution remediation. | Use `/api/teach-back`, `/api/teach-back/review`, `/api/learning/goal`, `/api/contributions`. Never call self-assessment an automatic mastery score. Keep task/snapshot/version identifiers and reject late responses. |
+| Teammate: B, after the core journey | Teach-back latest-submission resume is delivered. Add bookmark listing if resuming that screen requires it; help wire notebooks and snapshot selection. | Session-private, snapshot-scoped responses; no answer-key leaks; historical citations stay on the original commit. Coordinate schema migrations and shared contracts with you. |
 | Both | Independently review prepared guides, answers and architecture; recruit 6–8 peers; run counterbalanced browsing/mentor tasks; inspect results and rehearse. | Use anonymous, consented observations and a fixed explanation rubric. A script validates data and summarizes it; people still supply judgments and observations. |
 
 If all four roles are available, separate A (UI/integration), B (repository/storage), C (AI/retrieval) and D (learning/evaluation), matching `plan.md`. One person owns each shared file. Do not ask two people to rewrite the same workspace state simultaneously.
@@ -36,8 +36,8 @@ If all four roles are available, separate A (UI/integration), B (repository/stor
 
 ### P1 — Complete the learning journey
 
-1. D adds a teach-back composer after an attempted supported task. Show unavailable rubrics clearly. Preserve submission IDs until list/resume endpoints exist.
-2. D renders self-review concepts and distinct evidence-linked follow-ups. Submitting prose alone does not establish understanding.
+1. Delivered: teach-back composer after an attempted supported task, explicit unavailable-rubric state, and session-private latest-submission resume endpoint.
+2. Delivered: self-review concepts, required assessment for every concept, distinct evidence-linked follow-ups and revision/retry/reload/reset checks. Submitting prose alone does not establish understanding.
 3. D adds a goal choice and contribution recommendations with remediation before blocked briefs. The catalog currently contains documentation work, not verified upstream test/debug issues.
 4. A integrates the full journey, loading/validation/reset states and mobile layout. Test prediction → explanation → self-review → follow-up → contribution.
 5. Both perform human source review and participant trials. `npm run evaluate:peers -- input.json output.json` analyzes real paired records; it does not recruit participants or score explanations automatically.
@@ -60,16 +60,17 @@ Every feature handoff includes changed files, contract changes, checks actually 
 
 ## Owner's Git handoff
 
-The incoming merge is staged; the additional audited work includes unstaged and new files. Review both before committing. The commands below are for the owner to run after reviewing the complete changes; no commit or push was executed by the assistant.
+The integration was committed and pushed by the owner as `5269d66`. No pending merge remains. After reviewing the handoff, the owner authorized the assistant to commit and push the teach-back follow-up using the owner’s configured Git identity. The commands below also document the normal owner workflow.
 
 ```sh
 cd /Users/shashwat/Hackathons/VIT-Apex-3.0/Astrolabe
 git status --short
 git diff
-git diff --cached
 git add -A
-git commit -m "feat: integrate backend upgrades, architecture and local AI"
-git push -u origin walkthrough-qa
+git diff --cached --check
+git diff --cached --stat
+git commit -m "feat: add teach-back explanations and concept self-review"
+git push origin walkthrough-qa
 ```
 
-Do not start another pull while this merge is pending. The earlier local-work stash and external backup remain available; do not pop the whole old stash over the newer integration.
+The earlier local-work stash and external backup remain available; do not pop the whole old stash over the newer integration.

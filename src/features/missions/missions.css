@@ -565,3 +565,17 @@
   :is(.mission-panel, .results-panel) button,
   .mission-panel .mission-choice { transition: none; }
 }
+
+.mission-panel .teach-back { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--mission-border); }
+.mission-panel .teach-back h4 { margin: 10px 0; font-size: 18px; line-height: 1.4; }
+.teach-back-draft { display: grid; gap: 8px; font-weight: 600; }
+.mission-panel .teach-back textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; padding: 12px; border: 1px solid #87978d; border-radius: 8px; background: var(--mission-surface); color: var(--mission-ink); font: inherit; line-height: 1.65; }
+.mission-panel .teach-back textarea:focus-visible { outline: 2px solid var(--mission-accent); outline-offset: 3px; }
+.teach-back-saved { padding: 14px; background: #edf4ef; border-radius: 8px; overflow-wrap: anywhere; }
+.teach-back-saved p { white-space: pre-wrap; }
+.teach-back-concept { min-width: 0; padding: 12px; margin: 20px 0; border: 1px solid var(--mission-border); border-radius: 8px; }
+.teach-back-concept legend { padding: 0 4px; font-weight: 600; }
+.teach-back-concept label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; cursor: pointer; }
+.teach-back-concept input { margin-top: 5px; accent-color: var(--mission-accent); }
+.teach-back-follow-ups { margin: 20px 0; padding-top: 16px; border-top: 1px solid var(--mission-border); }
+.teach-back-follow-ups article + article { margin-top: 16px; border-top: 1px solid var(--mission-border); }

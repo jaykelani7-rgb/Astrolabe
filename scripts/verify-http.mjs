@@ -82,6 +82,7 @@ function client(cookie = '') {
 const a = client(), b = client();
 const oldMitt = 'mitt-f9a0b5397edf', newMitt = 'mitt-05f4ce67e8f1';
 let snapshotId, task, evidenceId, answerId, submission;
+const teachBackUrl = () => `/api/teach-back?${new URLSearchParams({ taskId: task.id, snapshotId, contentVersion: task.contentVersion })}`;
 try {
   await start();
   await check('production readiness and absent-provider state', async () => {
@@ -137,6 +138,7 @@ try {
     assert.equal((await a.request('/api/tasks/same-reference/attempt', { snapshotId, answer: 'invalid-choice' }, 400)).error.code, 'INVALID_ANSWER');
     assert.equal((await a.request('/api/tasks/same-reference/attempt', { snapshotId, contentVersion: 'stale', answer: 'skip' }, 409)).error.code, 'CONTENT_VERSION_MISMATCH');
     assert.equal((await a.request('/api/results')).totalAttempts, 0);
+    assert.equal((await a.request(teachBackUrl(), undefined, 200, true)).submission, null);
   });
   await check('hints, incorrect/correct attempts and restored feedback', async () => {
     assert.equal((await a.request('/api/tasks/same-reference/hint', {}, 200, true)).hintsUsed, 1);
@@ -208,6 +210,11 @@ try {
     const assessed = await a.request('/api/teach-back/review', review, 200, true);
     assert.equal(assessed.reviewMethod, 'learner_self_assessment');
     assert.ok(assessed.followUps.length);
+    const resumed = await a.request(teachBackUrl(), undefined, 200, true);
+    assert.equal(resumed.submission.id, submission.id);
+    assert.equal(resumed.submission.status, 'self_reviewed');
+    assert.equal((await b.request(teachBackUrl(), undefined, 200, true)).submission, null);
+    await a.request(teachBackUrl().replace(task.contentVersion, 'stale-version'), undefined, 409);
   });
   await check('private notebook download preserves pinned references', async () => {
     const bookmark = { snapshotId, title: 'HTTP verification note', answerId, evidenceIds: [evidenceId] };
@@ -237,11 +244,13 @@ try {
     assert.equal((await a.request('/api/progress')).progress.payload.stepId, 'predict-identity');
     assert.ok((await a.request('/api/questions/history')).answers.some(answer => answer.id === answerId));
     assert.match(await a.request('/api/notebook'), /HTTP verification note/);
+    assert.equal((await a.request(teachBackUrl(), undefined, 200, true)).submission.id, submission.id);
   });
   await check('reset clears this session practice but preserves saved notebook and preferences', async () => {
     await b.request('/api/tasks/same-reference/attempt', { snapshotId, answer: 'skip' });
     await a.request('/api/session/reset', {}, 200, true);
     assert.equal((await a.request('/api/results')).totalAttempts, 0);
+    assert.equal((await a.request(teachBackUrl(), undefined, 200, true)).submission, null);
     assert.equal((await a.request(`/api/results?snapshotId=${oldMitt}`)).totalAttempts, 0);
     assert.equal((await a.request('/api/tasks/same-reference/progress')).hintsUsed, 0);
     await a.request('/api/teach-back/review', { snapshotId, submissionId: submission.id, assessments: [{ conceptId: 'identity_guard', state: 'understood' }] }, 404);

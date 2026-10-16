@@ -260,3 +260,25 @@ export interface ArchitectureOverview {
   unresolved: ModuleMap["unresolved"];
   limitations: string[];
 }
+
+export type TeachBackAssessment = "understood" | "missing" | "uncertain";
+export interface TeachBackSubmission {
+  id: string;
+  taskId: string;
+  snapshotId: string;
+  contentVersion: string;
+  text: string;
+  status: "needs_review" | "self_reviewed";
+  concepts: { id: string; prompt: string; followUpTaskId: string; state: TeachBackAssessment | "unassessed" }[];
+  evidenceIds: string[];
+  reviewMethod: "human_or_self_review" | "learner_self_assessment";
+  limitations: string[];
+  followUps?: { conceptId: string; prompt: string; taskId: string; evidenceIds: string[] }[];
+}
+export interface TeachBackProgress {
+  taskId: string;
+  snapshotId: string;
+  contentVersion: string;
+  available: boolean;
+  submission: TeachBackSubmission | null;
+}
