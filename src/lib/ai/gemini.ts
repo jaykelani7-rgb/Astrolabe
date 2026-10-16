@@ -2,6 +2,7 @@ import "server-only";
 import { ProviderUnavailableError, SYSTEM_INSTRUCTION, readBoundedJson, type AnswerProvider } from "./shared";
 export { ProviderUnavailableError, type AnswerProvider, type ProviderRequest } from "./shared";
 import { modelJsonSchema } from "./schema";
+import { sourceMechanisms } from "./mechanisms";
 
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 export const AI_TIMEOUT_MS = 12_000;
@@ -50,6 +51,7 @@ export function createGeminiProvider(
                       question: input.question,
                       depth: input.depth ?? "beginner",
                       snapshotId: input.snapshotId,
+                      sourceMechanisms: sourceMechanisms(evidence),
                       ...(walkthrough ? { walkthrough } : {}),
                       evidence: evidence.map(
                         ({ evidenceId, fileId, startLine, endLine, text }) => ({
