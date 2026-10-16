@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { evidenceForRange, getEvidence, getMap, getSnapshot, getSource, listFiles, listSymbols, searchEvidence } from '@/lib/repository';
 import { getAttempts, getDb, getHintCount, recordHint, resetSession, saveAttempt } from '@/lib/db';
 import { GET as sourceRoute } from '@/app/api/repository/source/route';
@@ -42,7 +43,8 @@ describe('immutable source snapshot', () => {
     appendFileSync(path.join(fixture, 'data', 'snapshot', 'src', 'vanilla.ts'), '// changed after preparation\n');
     const modulePath = JSON.stringify(path.join(process.cwd(), 'src/lib/repository/index.ts'));
     const script = `try { require(${modulePath}).getSnapshot(); process.exitCode=2; } catch(error) { console.log(error.message); }`;
-    const result = await promisify(execFile)(process.execPath, ['--import', path.join(process.cwd(), 'node_modules/tsx/dist/loader.mjs'), '-e', script], { cwd: fixture, env: { ...process.env, TSX_TSCONFIG_PATH: path.join(process.cwd(), 'tsconfig.json') } });
+    const loader = pathToFileURL(path.join(process.cwd(), 'node_modules/tsx/dist/loader.mjs')).href;
+    const result = await promisify(execFile)(process.execPath, ['--import', loader, '-e', script], { cwd: fixture, env: { ...process.env, TSX_TSCONFIG_PATH: path.join(process.cwd(), 'tsconfig.json') } });
     expect(result.stdout).toContain('Snapshot integrity check failed: src/vanilla.ts');
   });
 

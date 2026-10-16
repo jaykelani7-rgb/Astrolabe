@@ -1,0 +1,4 @@
+# Prepared sources and licenses are immutable, byte-verified upstream artifacts.
+# Never apply platform line-ending conversion to them.
+/data/snapshot/** -text
+/data/snapshots/** -text

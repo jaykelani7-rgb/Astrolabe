@@ -15,7 +15,10 @@
     "prepare:repository": "node --import tsx scripts/prepare-repository.ts",
     "evaluate:qa": "node --conditions=react-server --import tsx scripts/evaluate-qa.ts",
     "postinstall": "node scripts/setup-monaco.mjs",
-    "setup": "node scripts/setup-monaco.mjs && npm run prepare:repository"
+    "setup": "node scripts/setup-monaco.mjs && npm run prepare:repository",
+    "verify:http": "node scripts/verify-http.mjs",
+    "verify:live": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/verify-live-qa.ts",
+    "evaluate:peers": "node --import tsx scripts/evaluate-peer-study.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",

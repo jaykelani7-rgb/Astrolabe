@@ -56,13 +56,13 @@ Restart the server after changing environment variables. The key stays server-si
 
 Try these prepared questions with an explicit scope:
 
-| Scope | Source or flow | Question |
-| --- | --- | --- |
-| Current file | `src/vanilla.ts` | How does setState update state? |
-| Current file | `src/vanilla.ts` | How do I unsubscribe? |
-| Current file | `src/react.ts` | How does useStore use a selector? |
-| This walkthrough | From a store to a React selection | What is getInitialState? |
-| Repository | Whole snapshot | What is getInitialState? |
+| Scope            | Source or flow                    | Question                          |
+| ---------------- | --------------------------------- | --------------------------------- |
+| Current file     | `src/vanilla.ts`                  | How does setState update state?   |
+| Current file     | `src/vanilla.ts`                  | How do I unsubscribe?             |
+| Current file     | `src/react.ts`                    | How does useStore use a selector? |
+| This walkthrough | From a store to a React selection | What is getInitialState?          |
+| Repository       | Whole snapshot                    | What is getInitialState?          |
 
 A question about an absent PostgreSQL migration engine produces an evidence gap. A plausible source question that has no matching prepared answer reports live AI unavailable without a key. Prepared matches and live retrieval respect the selected file and exact line range; the app does not silently broaden that scope. A prepared explanation is available only when every one of its cited targets fits the chosen context. For example, the unsubscribe explanation needs both lines60–64 and88–92, so selecting only88–92 cannot reveal that full prepared explanation. Expand the scope deliberately if needed.
 
@@ -104,16 +104,16 @@ The Q&A evaluation contains 24 questions: 16 development questions and eight res
 
 ## Application structure
 
-| Area | Responsibility |
-| --- | --- |
+| Area                                                                   | Responsibility                                                                                         |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `src/app/`, `src/components/workspace/`, `src/lib/client/workspace.ts` | Small shell, notebook overview, panel layout, file/flow navigation and snapshot-scoped interface state |
-| `src/contracts/` | Shared TypeScript records and request validation |
-| `src/lib/repository/`, `src/lib/evidence/` | Snapshot inventory, AST relationships, source and evidence access |
-| `src/lib/db/` | Native SQLite/FTS5 schema, source index, attempt and hint persistence |
-| `src/lib/ai/`, `src/lib/retrieval/` | Gemini adapter, prepared matches, bounded retrieval and citation validation |
-| `content/`, `src/lib/learning/` | Versioned content, server-only rubrics, scoring, summaries and session cookies |
-| `src/features/missions/` | Prediction and results interfaces |
-| `tests/`, `docs/` | Unit/integration/browser checks, evaluation data and demo instructions |
+| `src/contracts/`                                                       | Shared TypeScript records and request validation                                                       |
+| `src/lib/repository/`, `src/lib/evidence/`                             | Snapshot inventory, AST relationships, source and evidence access                                      |
+| `src/lib/db/`                                                          | Native SQLite/FTS5 schema, source index, attempt and hint persistence                                  |
+| `src/lib/ai/`, `src/lib/retrieval/`                                    | Gemini adapter, prepared matches, bounded retrieval and citation validation                            |
+| `content/`, `src/lib/learning/`                                        | Versioned content, server-only rubrics, scoring, summaries and session cookies                         |
+| `src/features/missions/`                                               | Prediction and results interfaces                                                                      |
+| `tests/`, `docs/`                                                      | Unit/integration/browser checks, evaluation data and demo instructions                                 |
 
 The build was divided among three subagents for repository/evidence, retrieval/Q&A, and learning/evaluation; the integration agent owns shared configuration/contracts and the main UI. Work was partitioned by file ownership within the shared workspace. No deadline or named teammate availability was assumed.
 
@@ -121,27 +121,31 @@ The build was divided among three subagents for repository/evidence, retrieval/Q
 
 All route handlers run in the Node.js runtime. Errors use `{ "error": { "code": "...", "message": "...", "details": "optional" } }`.
 
-| Endpoint | Behavior |
-| --- | --- |
-| `GET /api/repository` | Snapshot metadata and source-file inventory |
-| `GET /api/repository/map` | Static relationships and unresolved references |
-| `GET /api/repository/source?fileId=...` | Allowlisted source; accepts snapshot/range validation parameters |
-| `GET /api/evidence/[id]` | Verified evidence record and text |
-| `GET /api/guides` | Walkthroughs and public tasks, without rubrics |
-| `GET /api/tasks/[id]` | Public task prompt and context
-| `GET /api/tasks/[id]/progress` | This session's submitted answer/feedback and recorded hints; explanations require a prior attempt |
-| `POST /api/tasks/[id]/attempt` | Validated answer, server score and released explanation |
-| `POST /api/tasks/[id]/hint` | Hint and recorded hint count |
-| `GET /api/results` | Current session summary and contribution briefs |
-| `POST /api/questions` | Contextual Q&A response with explicit status and mode |
-| `GET /api/questions/status` | Prepared availability and whether a live key is configured; provider health remains unverified |
-| `POST /api/session/reset` | Clear only the current session's practice data |
+| Endpoint                                | Behavior                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `GET /api/repository`                   | Snapshot metadata and source-file inventory                                                       |
+| `GET /api/repository/map`               | Static relationships and unresolved references                                                    |
+| `GET /api/repository/source?fileId=...` | Allowlisted source; accepts snapshot/range validation parameters                                  |
+| `GET /api/evidence/[id]`                | Verified evidence record and text                                                                 |
+| `GET /api/guides`                       | Walkthroughs and public tasks, without rubrics                                                    |
+| `GET /api/tasks/[id]`                   | Public task prompt and context                                                                    |
+| `GET /api/tasks/[id]/progress`          | This session's submitted answer/feedback and recorded hints; explanations require a prior attempt |
+| `POST /api/tasks/[id]/attempt`          | Validated answer, server score and released explanation                                           |
+| `POST /api/tasks/[id]/hint`             | Hint and recorded hint count                                                                      |
+| `GET /api/results`                      | Current session summary and contribution briefs                                                   |
+| `POST /api/questions`                   | Contextual Q&A response with explicit status and mode                                             |
+| `GET /api/questions/status`             | Prepared availability and whether a live key is configured; provider health remains unverified    |
+| `POST /api/session/reset`               | Clear only the current session's practice data                                                    |
 
 Question bodies are limited to 4 KB; general JSON requests are bounded to 8 KB. Q&A accepts either source context (`fileId` with optional `startLine`/`endLine`) or walkthrough context (`guideId` with optional `stepId`), never both. Empty file IDs and orphan/unknown steps fail explicitly. Walkthrough evidence is resolved from the pinned reviewed guide on the server. Snapshot mismatches, absent files/evidence, malformed answers, invalid ranges and provider failure return explicit outcomes. The local prototype prevents accidental answer reveal, not inspection by someone who controls its source or database.
 
+## Backend upgrade APIs
+
+See [the backend handoff](docs/BACKEND-UPGRADES.md) for claim-linked responses, architecture, signed-session server history, teach-back, goal-based briefs, notebook export and snapshot comparison. The upstream UI redesign and walkthrough Q&A are preserved; new backend features still need their separate interface integration. Zustand remains the default, and two pinned mitt snapshots provide separate learning packs. Run `npm run verify:live` for provider verification.
+
 ## Boundaries
 
-This is a single-repository local prototype. Private repositories, uploads, additional languages, authentication, code execution/editing, version comparison, personalized learning paths and production hosting are outside scope. Import resolution covers static ES imports and re-exports in the bundled TypeScript files; dynamic imports, CommonJS and dependency implementations are omitted. Four small practice tasks do not measure professional readiness. Human review and a participant study are future evaluation work, not completed findings.
+This is a local prototype with a default Zustand interface and backend support for prepared Zustand/mitt snapshots. Manual backend snapshot comparison is available; general URL ingestion, private repositories, uploads, additional languages, authentication, code execution/editing, fully personalised learning paths and production hosting remain outside scope. Import resolution covers static ES imports and re-exports in the bundled TypeScript files; dynamic imports, CommonJS and dependency implementations are omitted. Four small practice tasks do not measure professional readiness. Human review and a participant study are future evaluation work, not completed findings.
 
 ## Interface state and redesign verification
 
