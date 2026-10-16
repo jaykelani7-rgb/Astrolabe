@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import type { QaResponse, QuestionInput, LearningGoal } from "@/contracts";
+import type { QaResponse, QuestionInput, LearningGoal, ContributionBrief } from "@/contracts";
 import { learningGoalSchema } from "@/contracts";
 import { AppError } from "@/lib/api";
 import {
@@ -10,13 +10,14 @@ import {
   listSnapshots,
   listFiles,
 } from "@/lib/repository";
-import { getRecords, saveRecord } from "@/lib/db";
+import { getRecords, saveRecord, updateRecord, deleteRecord } from "@/lib/db";
 import { sessionResults, publicLearning } from "@/lib/learning";
 export interface StoredAnswer {
   question: string;
   context: QuestionInput;
   response: QaResponse;
   model: string | null;
+  provider?: string | null;
 }
 export function storeAnswer(
   sessionId: string,
@@ -27,10 +28,8 @@ export function storeAnswer(
     question: input.question,
     context: input,
     response,
-    model:
-      response.mode === "live"
-        ? (process.env.GEMINI_MODEL ?? "gemini-3.8-flash")
-        : null,
+    model: response.mode === "live" ? response.model ?? null : null,
+    provider: response.mode === "live" ? response.provider ?? null : null,
   });
   return { ...response, answerId: id };
 }
@@ -157,8 +156,63 @@ export function bookmark(sessionId: string, raw: unknown) {
     ...input,
     savedAnswer: answer?.payload,
     brief,
+    revision: 1,
   });
-  return { id, ...input };
+  return { id, ...input, revision: 1 };
+}
+export interface BookmarkPayload extends z.infer<typeof bookmarkSchema> {
+  revision?: number;
+  updatedAt?: string;
+  savedAnswer?: StoredAnswer;
+  brief?: ContributionBrief;
+}
+export const bookmarkListSchema = z.object({
+  snapshotId: z.string().min(1).max(120),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+}).strict();
+export const bookmarkSnapshotSchema = bookmarkListSchema.pick({ snapshotId: true });
+export const bookmarkEditSchema = z.object({
+  snapshotId: z.string().min(1).max(120),
+  revision: z.number().int().positive(),
+  title: z.string().trim().min(1).max(160).optional(),
+  note: z.string().trim().max(3000).optional(),
+}).strict().refine(input => input.title !== undefined || input.note !== undefined, { message: 'Edit the title or note.' });
+export function readBookmark(sessionId: string, snapshotId: string, id: string) {
+  getSnapshot(snapshotId);
+  z.string().uuid().parse(id);
+  const record = getRecords<BookmarkPayload>(sessionId, snapshotId, 'bookmark').find(item => item.id === id);
+  if (!record) throw new AppError('BOOKMARK_NOT_FOUND', 'This bookmark does not belong to this session and snapshot.', 404);
+  return { ...record, payload: { ...record.payload, revision: record.payload.revision ?? 1 } };
+}
+export function listBookmarks(sessionId: string, raw: unknown) {
+  const input = bookmarkListSchema.parse(raw);
+  getSnapshot(input.snapshotId);
+  const records = getRecords<BookmarkPayload>(sessionId, input.snapshotId, 'bookmark');
+  return {
+    snapshotId: input.snapshotId,
+    bookmarks: records.slice(input.offset, input.offset + input.limit).map(record => ({ ...record, payload: { ...record.payload, revision: record.payload.revision ?? 1 } })),
+    total: records.length,
+    nextOffset: input.offset + input.limit < records.length ? input.offset + input.limit : null,
+  };
+}
+export function editBookmark(sessionId: string, id: string, raw: unknown) {
+  const input = bookmarkEditSchema.parse(raw);
+  const record = readBookmark(sessionId, input.snapshotId, id);
+  const payload = { ...record.payload,
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.note !== undefined ? { note: input.note } : {}),
+    revision: input.revision + 1, updatedAt: new Date().toISOString(),
+  };
+  if (!updateRecord(sessionId, input.snapshotId, 'bookmark', id, payload, input.revision))
+    throw new AppError('BOOKMARK_CONFLICT', 'This bookmark changed. Reload it before saving.', 409);
+  return readBookmark(sessionId, input.snapshotId, id);
+}
+export function removeBookmark(sessionId: string, snapshotId: string, id: string) {
+  readBookmark(sessionId, snapshotId, id);
+  if (!deleteRecord(sessionId, snapshotId, 'bookmark', id))
+    throw new AppError('BOOKMARK_NOT_FOUND', 'This bookmark does not belong to this session and snapshot.', 404);
+  return { ok: true, id, snapshotId };
 }
 function sourceLink(evidenceId: string, snapshotId: string) {
   const snapshot = getSnapshot(snapshotId),
@@ -197,6 +251,7 @@ export function exportNotebook(
       title: string;
       suggestedChange: string;
       verificationSteps: string[];
+      evidenceIds?: string[];
     };
   }>(sessionId, snapshot.snapshotId, "bookmark")) {
     const item = record.payload,
@@ -205,11 +260,11 @@ export function exportNotebook(
           ...item.evidenceIds,
           ...(item.savedAnswer?.response.citations.map((c) => c.evidenceId) ??
             []),
-          ...(item.brief
+          ...(item.brief?.evidenceIds ?? (item.brief
             ? (sessionResults(sessionId, snapshot.snapshotId).briefs.find(
                 (b) => b.title === item.brief!.title,
               )?.evidenceIds ?? [])
-            : []),
+            : [])),
         ]),
       ];
     const changed =
@@ -236,6 +291,8 @@ export function exportNotebook(
         `Question: ${item.savedAnswer.question}`,
         "",
         `Answer mode: ${item.savedAnswer.response.mode}; review: ${item.savedAnswer.response.reviewState ?? "unverified"}`,
+        `Provider: ${item.savedAnswer.response.provider ?? item.savedAnswer.provider ?? 'not recorded'}; model: ${item.savedAnswer.response.model ?? item.savedAnswer.model ?? 'not recorded'}`,
+        `Original context: ${JSON.stringify(item.savedAnswer.context)}`,
         "",
         item.savedAnswer.response.answer,
         "",

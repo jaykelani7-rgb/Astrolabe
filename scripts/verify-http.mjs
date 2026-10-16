@@ -60,9 +60,9 @@ async function check(name, execute) {
 function client(cookie = '') {
   return {
     cookie,
-    async request(url, body, status = 200, privateResponse = false) {
+    async request(url, body, status = 200, privateResponse = false, method = body === undefined ? 'GET' : 'POST') {
       const response = await fetch(base + url, {
-        method: body === undefined ? 'GET' : 'POST',
+        method,
         headers: { ...(this.cookie ? { cookie: this.cookie } : {}), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20_000),
       });
@@ -224,6 +224,46 @@ try {
     assert.match(markdown, /HTTP verification note/);
     assert.match(markdown, /\/blob\/0ea8be27db13019819fc1c0492e5b672dd7b6f4b\//);
     assert.doesNotMatch(await b.request('/api/notebook'), /HTTP verification note/);
+  });
+  await check('private bookmark listing, immutable provenance, revision conflicts and deletion', async () => {
+    const { bookmarks } = await a.request(`/api/notebook/bookmarks?snapshotId=${snapshotId}&limit=1`, undefined, 200, true);
+    const record = bookmarks[0], url = `/api/notebook/bookmarks/${record.id}`, query = `?snapshotId=${snapshotId}`;
+    assert.equal((await a.request(url + query, undefined, 200, true)).id, record.id);
+    await b.request(url + query, undefined, 404);
+    await a.request(url + `?snapshotId=${oldMitt}`, undefined, 404);
+    const updated = await a.request(url, { snapshotId, revision: record.payload.revision, note: 'Revised HTTP note' }, 200, true, 'PATCH');
+    assert.deepEqual(updated.payload.savedAnswer, record.payload.savedAnswer);
+    assert.equal(updated.payload.revision, record.payload.revision + 1);
+    await a.request(url, { snapshotId, revision: record.payload.revision, note: 'Stale edit' }, 409, false, 'PATCH');
+    const temporary = await a.request('/api/notebook/bookmarks', { snapshotId, title: 'Disposable note' });
+    await b.request(`/api/notebook/bookmarks/${temporary.id}${query}`, undefined, 404, false, 'DELETE');
+    await a.request(`/api/notebook/bookmarks/${temporary.id}${query}`, undefined, 200, true, 'DELETE');
+    await a.request(`/api/notebook/bookmarks/${temporary.id}${query}`, undefined, 404);
+    assert.ok((await a.request('/api/questions/history')).answers.some(answer => answer.id === answerId));
+  });
+  await check('bounded public search returns snapshot evidence and query-bound pagination', async () => {
+    const query = `/api/search?snapshotId=${snapshotId}&q=state&mode=code&limit=2`;
+    const first = await a.request(query, undefined, 200, true);
+    assert.equal(first.matches.length, 2); assert.ok(first.nextCursor);
+    for (const match of first.matches) {
+      const evidence = await a.request(`/api/evidence/${match.evidenceId}?snapshotId=${snapshotId}`);
+      assert.equal(evidence.startLine, match.startLine); assert.equal(evidence.fileId, match.fileId);
+    }
+    const next = await a.request(query + '&cursor=' + first.nextCursor);
+    assert.ok(next.matches.every(match => !first.matches.some(previous => previous.evidenceId === match.evidenceId)));
+    await a.request(query.replace('q=state', 'q=subscribe') + '&cursor=' + first.nextCursor, undefined, 400);
+    await a.request(query + '&path=../../.env.local', undefined, 400);
+    await a.request(query.replace('limit=2', 'limit=26'), undefined, 400);
+    const symbols = await a.request(`/api/search?snapshotId=${snapshotId}&q=setState&mode=symbol`);
+    assert.ok(symbols.matches.some(match => match.name === 'setState' && match.runtime));
+  });
+  await check('stale hint and progress versions fail before recording hints', async () => {
+    const url = `/api/tasks/${task.id}`;
+    const before = await a.request(`${url}/progress?snapshotId=${snapshotId}&contentVersion=${task.contentVersion}`);
+    await a.request(`${url}/hint?snapshotId=${snapshotId}&contentVersion=stale`, {}, 409);
+    await a.request(`${url}/progress?snapshotId=${snapshotId}&contentVersion=stale`, undefined, 409);
+    const after = await a.request(`${url}/progress?snapshotId=${snapshotId}&contentVersion=${task.contentVersion}`);
+    assert.equal(after.hintsUsed, before.hintsUsed); assert.equal(after.contentVersion, task.contentVersion);
   });
   await check('snapshot comparison flags stale authored content', async () => {
     const comparison = await a.request('/api/snapshots/compare', { fromSnapshotId: oldMitt, toSnapshotId: newMitt });

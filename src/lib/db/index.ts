@@ -329,6 +329,19 @@ export function getRecords<T = unknown>(
     createdAt: row.created_at,
   }));
 }
+/** Compare-and-swap edits keep simultaneous notebook saves from silently overwriting. */
+export function updateRecord(
+  sessionId: string, snapshotId: string, category: RecordCategory, id: string,
+  payload: unknown, expectedRevision: number,
+): boolean {
+  return getDb().prepare(
+    "UPDATE workspace_records SET payload_json = ? WHERE id = ? AND session_id = ? AND snapshot_id = ? AND category = ? AND COALESCE(json_extract(payload_json, '$.revision'), 1) = ?",
+  ).run(JSON.stringify(payload), id, sessionId, snapshotId, category, expectedRevision).changes === 1;
+}
+export function deleteRecord(sessionId: string, snapshotId: string, category: RecordCategory, id: string): boolean {
+  return getDb().prepare("DELETE FROM workspace_records WHERE id = ? AND session_id = ? AND snapshot_id = ? AND category = ?")
+    .run(id, sessionId, snapshotId, category).changes === 1;
+}
 export function registerContentDependency(
   contentId: string,
   snapshotId: string,

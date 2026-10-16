@@ -13,6 +13,7 @@ export async function POST(
         sessionId,
         id,
         new URL(request.url).searchParams.get("snapshotId") ?? undefined,
+        new URL(request.url).searchParams.get("contentVersion") ?? undefined,
       ),
     );
   } catch (error) {
