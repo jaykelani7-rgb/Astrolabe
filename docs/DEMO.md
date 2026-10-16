@@ -1,18 +1,17 @@
-# Five-minute demonstration
+# Demonstrate Astrolabe
 
-1. Start with `npm ci`, `npm run setup`, `npm run dev`, then open http://127.0.0.1:3000. Leave `GEMINI_API_KEY` blank to demonstrate prepared mode.
-2. On Overview, show Zustand, its MIT license, and pinned commit `0ea8be2`. Click **Explore repository**. Open `src/vanilla.ts`; switch to **Module map** and click `src/react.ts`. Explain that edges are static imports.
-3. Open **Walkthroughs**, choose **From state update to subscribers**, and follow the steps. Toggle Beginner/Developer; the exact source target stays the same.
-4. Open **Prediction tasks**. For **Will subscribers hear this?**, first make an incorrect prediction. Show feedback and click **Verify explanation** to inspect lines 66–81. Retry; choose “No subscriber is called for this update.”
-5. Demonstrate one ordering or range task. The merge decision is lines 75–78; include the assignment and both branches. Explain that hints and retries remain in the results.
-6. Open `src/vanilla.ts`, clear any unrelated line selection by clicking the file again, then ask **How does setState update state?**. Point out **Reviewed answer** and inspect its citations. Ask **How does this repository implement a PostgreSQL migration engine?** and show the evidence gap.
-7. Open **Your progress**, inspect task-level results, expand a contribution brief, and show its source and verification steps. The tool has not changed the studied repository.
-8. Reset the learning session to prepare for the next demonstration.
+Start with `npm ci`, `npm run setup`, and `npm run dev`, then open http://127.0.0.1:3000. Leave `GEMINI_API_KEY` blank to demonstrate prepared mode.
 
-For a two-minute version, show the pinned snapshot, one walkthrough step, one incorrect/correct prediction, its evidence link, and the results page.
+1. On **Overview**, show the purpose of Zustand, its MIT license and the pinned commit in the persistent repository header. Explain that this is one prepared, immutable source snapshot.
+2. Choose **Explore source**. Open `src/vanilla.ts`, switch to **Module map**, and click a file. Edges represent static imports rather than runtime execution. Try **Focus editor**, then exit focus; panels can collapse or resize using the pointer or arrow keys on their separators.
+3. In the mentor, choose **Current file** scope and ask **How does setState update state?**. Point out **Reviewed answer** and its original file/depth context. Click a readable citation; the source opens without losing the answer. **Clear selection** removes the highlight. Compare **Repository** scope, which does not restrict retrieval to the open file, with **Selected lines**, enabled only for a valid selection.
+4. Open **Learn** or choose **Start learning** on Overview. Follow the state-update walkthrough. Change explanation depth deliberately; previous answers keep their original depth. At **Predict an unchanged reference**, choose **Make a prediction**. Submit an incorrect answer, inspect its evidence, and then retry with “No subscriber is called for this update.” Hints and retries remain recorded.
+5. Select **Continue walkthrough**. The next step and its source open in the same flow. Revisit the solved checkpoint; its submitted answer and feedback are restored.
+6. Open **My progress**. Distinguish locally visited steps from server-scored checkpoints solved, review attempt/hint context, and expand a **Prepared contribution brief**. These are fixed source-checked ideas, not dynamically generated recommendations.
+7. Reset checkpoint results only if desired. The confirmation explains that the current session's attempts and hints are cleared; question history, visited steps, and layout preferences remain.
 
-The browser journey test records the actual application into `test-results/**/video.webm`. A passing-run backup is saved as `docs/demo.webm` when available. The recording is automated verification footage, not a narrated presentation.
+For a two-minute version, show the pinned snapshot, one contextual answer with a citation, one checkpoint, Continue walkthrough, and progress.
 
-## Honest demonstration claims
+The latest actual automated browser journey is saved as `docs/demo.webm`. Screenshots at desktop, laptop and mobile sizes and the executed checks are recorded in `docs/REDESIGN-CHECKS.md`. The video is verification footage, not a narrated presentation.
 
-The source is real, bundled and pinned. The task keys stay on the server and feedback is released after an attempt. Prepared material is source-checked by implementation agents, with independent human review pending. Citation validation checks references, not semantic truth. Live Gemini output requires a supplied credential and has not been exercised in this build. A participant study and held-out evaluation are pending.
+Prepared material was source-checked by implementation agents; independent human review remains pending. Citation validation establishes reference integrity, not semantic truth. Live Gemini output requires a server credential, and a configured key does not establish provider availability. A live-provider evaluation, independent held-out review and participant study remain pending.

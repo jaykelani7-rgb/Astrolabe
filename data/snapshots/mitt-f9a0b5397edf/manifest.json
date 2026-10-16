@@ -1,0 +1,20 @@
+{
+  "snapshotId": "mitt-f9a0b5397edf",
+  "name": "developit/mitt",
+  "repositoryUrl": "https://github.com/developit/mitt",
+  "commitSha": "f9a0b5397edfe10c8ad0629e08ae4f123b4d65fa",
+  "license": "MIT",
+  "language": "TypeScript",
+  "preparedAt": "2026-10-16",
+  "status": "ready",
+  "description": "Pinned public event-emitter source. Only src/index.ts is included; tests and dependencies are excluded.",
+  "tag": "f9a0b5397edf",
+  "files": [
+    {
+      "path": "src/index.ts",
+      "sha256": "2d83d1cab7e0ed47dec9c4c38b0072b9f29f56f8b63b153e0068e08051324e15",
+      "bytes": 3716,
+      "gitBlobSha": "730152098276917dd71c2bc29a1cedc1b72d959c"
+    }
+  ]
+}

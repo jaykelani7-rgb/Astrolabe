@@ -1,0 +1,48 @@
+{
+  "checkedAt": "2026-10-16T11:00:07.810Z",
+  "applicationBranch": "walkthrough-qa",
+  "applicationCommit": "e9a21e69b8affa32a6aa3fc769c07c6bab40d161",
+  "snapshotId": "zustand-0ea8be27db13",
+  "mode": "production, prepared only, credential blank",
+  "checks": [
+    {
+      "name": "walkthrough cross-file prepared answer",
+      "passed": true,
+      "http": 200,
+      "status": "answered",
+      "mode": "reviewed"
+    },
+    {
+      "name": "narrow selected lines",
+      "passed": true,
+      "http": 200,
+      "status": "unavailable",
+      "citations": 0
+    },
+    {
+      "name": "restrictive current file",
+      "passed": true,
+      "http": 200,
+      "status": "unavailable",
+      "citations": 0
+    },
+    {
+      "name": "contradictory scopes",
+      "passed": true,
+      "http": 400,
+      "code": "INVALID_INPUT"
+    },
+    {
+      "name": "unknown guide step",
+      "passed": true,
+      "http": 404,
+      "code": "STEP_NOT_FOUND"
+    },
+    {
+      "name": "empty file ID",
+      "passed": true,
+      "http": 400,
+      "code": "INVALID_INPUT"
+    }
+  ]
+}

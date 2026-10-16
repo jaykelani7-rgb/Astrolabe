@@ -1,12 +1,22 @@
-import 'server-only';
-import type { QuestionInput, QaResponse } from '@/contracts';
-import { questionSchema } from '@/contracts';
-import { defaultRepository, retrieveContext, validateEvidence, type EvidenceRepository } from '@/lib/retrieval';
-import { createGeminiProvider, DEFAULT_GEMINI_MODEL, ProviderUnavailableError, type AnswerProvider } from './gemini';
-import { modelAnswerSchema } from './schema';
-import { reviewedAnswer } from './reviewed';
+import "server-only";
+import type { QuestionInput, QaResponse } from "@/contracts";
+import { questionSchema } from "@/contracts";
+import {
+  repositoryForSnapshot,
+  retrieveContext,
+  validateEvidence,
+  type EvidenceRepository,
+} from "@/lib/retrieval";
+import {
+  ProviderUnavailableError,
+  type AnswerProvider,
+} from "./gemini";
+import { createConfiguredProvider, providerConfiguration } from "./provider";
+import { modelAnswerSchema } from "./schema";
+import { reviewedAnswer } from "./reviewed";
 
-const LIVE_LIMITATION = 'Live AI output: citation structure is validated, but that does not prove every claim is correct. Verify the source.';
+const LIVE_LIMITATION =
+  "Live AI output: citation structure is validated, but that does not prove every claim is correct. Verify the source.";
 const CACHE_TTL_MS = 5 * 60_000;
 const cache = new Map<string, { expires: number; response: QaResponse }>();
 
@@ -17,71 +27,163 @@ export interface AnswerOptions {
   prepared?: boolean;
 }
 
-export function clearAnswerCache() { cache.clear(); }
-
-function gap(limitations: string[], answer = 'The selected source does not provide enough evidence to answer this question. Try a source-level question or select a relevant file and range.'): QaResponse {
-  return { status: 'evidence_gap', mode: 'live', answer, citations: [], limitations };
+export function clearAnswerCache() {
+  cache.clear();
 }
 
-export async function answerQuestion(rawInput: QuestionInput, options: AnswerOptions = {}): Promise<QaResponse> {
+function gap(
+  limitations: string[],
+  answer = "The selected source does not provide enough evidence to answer this question. Try a source-level question or select a relevant file and range.",
+): QaResponse {
+  return {
+    status: "evidence_gap",
+    mode: "live",
+    answer,
+    blocks: [{ text: answer, kind: "unknown", evidenceIds: [] }],
+    reviewState: "generated",
+    citations: [],
+    limitations,
+  };
+}
+
+export async function answerQuestion(
+  rawInput: QuestionInput,
+  options: AnswerOptions = {},
+): Promise<QaResponse> {
   const input = questionSchema.parse(rawInput);
-  const store = options.repository ?? defaultRepository;
+  const store = options.repository ?? repositoryForSnapshot(input.snapshotId);
   const context = retrieveContext(input, store);
   // A prepared answer only matches an explicit known question and the same source context.
   if (options.prepared !== false) {
-    const prepared = reviewedAnswer(input, store);
-    const withinWalkthrough = prepared?.citations.every((citation) => context.evidence.some((range) =>
-      range.fileId === citation.fileId && range.startLine <= citation.startLine && range.endLine >= citation.endLine));
-    if (prepared && (!context.walkthrough || withinWalkthrough)) {
-      return context.walkthrough ? { ...prepared, limitations: [...prepared.limitations, ...context.limitations] } : prepared;
-    }
+    const prepared = reviewedAnswer(
+      input,
+      store,
+      context.walkthrough ? context.evidence : undefined,
+    );
+    if (prepared)
+      return context.walkthrough
+        ? {
+            ...prepared,
+            limitations: [...prepared.limitations, ...context.limitations],
+          }
+        : prepared;
   }
   if (!context.evidence.length) return gap(context.limitations);
 
+  const configuration = providerConfiguration();
   const cacheKey = JSON.stringify({
-    snapshot: input.snapshotId, file: input.fileId ?? '', start: input.startLine ?? null, end: input.endLine ?? null,
-    depth: input.depth ?? 'beginner', question: input.question.trim().toLowerCase(),
-    guide: input.guideId ?? '', step: input.stepId ?? '',
-    model: process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
-    configured: Boolean(process.env.GEMINI_API_KEY?.trim()),
-    evidence: context.evidence.map((item) => [item.evidenceId, item.contentHash]),
+    guide: input.guideId ?? "",
+    step: input.stepId ?? "",
+    scope: input.scope ?? "legacy",
+    snapshot: input.snapshotId,
+    file: input.fileId ?? "",
+    start: input.startLine ?? null,
+    end: input.endLine ?? null,
+    depth: input.depth ?? "beginner",
+    question: input.question.trim().toLowerCase(),
+    provider: configuration.provider,
+    model: configuration.model,
+    baseUrl: configuration.baseUrl,
+    configured: configuration.configured,
+    evidence: context.evidence.map((item) => [
+      item.evidenceId,
+      item.contentHash,
+    ]),
   });
   const useCache = options.useCache ?? !options.provider;
   const now = Date.now();
   if (useCache) {
     const cached = cache.get(cacheKey);
-    if (cached && cached.expires > now) return { ...structuredClone(cached.response), cached: true };
+    if (cached && cached.expires > now)
+      return { ...structuredClone(cached.response), cached: true };
     if (cached) cache.delete(cacheKey);
   }
   try {
-    const raw = await (options.provider ?? createGeminiProvider())({ input, evidence: context.evidence, walkthrough: context.walkthrough });
+    const raw = await (options.provider ?? createConfiguredProvider())({
+      input,
+      evidence: context.evidence,
+      walkthrough: context.walkthrough,
+      sourcePaths: Object.fromEntries(store.listFiles().map((file) => [file.fileId, file.path])),
+    });
     const parsed = modelAnswerSchema.safeParse(raw);
-    if (!parsed.success) return gap([...context.limitations, 'The AI response failed structured validation and was withheld.']);
+    if (!parsed.success)
+      return gap([
+        ...context.limitations,
+        "The AI response failed structured validation and was withheld.",
+      ]);
     const model = parsed.data;
-    if (model.status === 'evidence_gap') return gap([...context.limitations, ...model.limitations], model.answer);
-    if (!model.citationIds.length) return gap([...context.limitations, 'The AI supplied no source citations; its answer was withheld.']);
-    const allowed = new Map(context.evidence.map((item) => [item.evidenceId, item]));
-    if (model.citationIds.some((id) => !allowed.has(id))) return gap([...context.limitations, 'The AI referenced evidence outside this question; its answer was withheld.']);
-    const citations = [...new Set(model.citationIds)].map((id) => validateEvidence(allowed.get(id)!, input.snapshotId, store));
+    if (model.status === "evidence_gap")
+      return gap(
+        [...context.limitations, ...model.limitations],
+        model.blocks.map((block) => block.text).join("\n\n"),
+      );
+    const citationIds = model.blocks.flatMap((block) => block.evidenceIds);
+    if (!citationIds.length)
+      return gap([
+        ...context.limitations,
+        "The AI supplied no source citations; its answer was withheld.",
+      ]);
+    const allowed = new Map(
+      context.evidence.map((item) => [item.evidenceId, item]),
+    );
+    if (citationIds.some((id) => !allowed.has(id)))
+      return gap([
+        ...context.limitations,
+        "The AI referenced evidence outside this question; its answer was withheld.",
+      ]);
+    const citations = [...new Set(citationIds)].map((id) =>
+      validateEvidence(allowed.get(id)!, input.snapshotId, store),
+    );
     const result: QaResponse = {
-      status: 'answered', mode: 'live', answer: model.answer, citations,
-      limitations: [...context.limitations, ...model.limitations, LIVE_LIMITATION],
+      status: "answered",
+      mode: "live",
+      provider: configuration.provider,
+      model: configuration.model,
+      answer: model.blocks.map((block) => block.text).join("\n\n"),
+      blocks: model.blocks,
+      reviewState: "generated",
+      citations,
+      limitations: [
+        ...context.limitations,
+        ...model.limitations,
+        LIVE_LIMITATION,
+      ],
     };
     if (useCache) {
-      for (const [key, value] of cache) if (value.expires <= now) cache.delete(key);
+      for (const [key, value] of cache)
+        if (value.expires <= now) cache.delete(key);
       if (cache.size >= 100) cache.delete(cache.keys().next().value!);
-      cache.set(cacheKey, { expires: now + CACHE_TTL_MS, response: structuredClone(result) });
+      cache.set(cacheKey, {
+        expires: now + CACHE_TTL_MS,
+        response: structuredClone(result),
+      });
     }
     return result;
   } catch (error) {
-    const reason = error instanceof ProviderUnavailableError ? error.reason : 'provider_error';
+    const reason =
+      error instanceof ProviderUnavailableError
+        ? error.reason
+        : "provider_error";
     return {
-      status: 'unavailable', mode: 'live', citations: [],
-      answer: reason === 'missing_key'
-        ? 'Live Q&A is unavailable because no server-side Gemini credential is configured. Prepared walkthroughs, tasks, and known prepared questions remain available.'
-        : reason === 'timeout' ? 'The AI request timed out. Try again or continue with the prepared learning content.'
-          : 'The AI service could not provide a verified response. Try again or continue with the prepared learning content.',
-      limitations: [...context.limitations, reason === 'missing_key' ? 'GEMINI_API_KEY must be configured on the server for live Q&A.' : 'Provider failure details are intentionally omitted from the public response.'],
+      status: "unavailable",
+      mode: "live",
+      citations: [],
+      answer:
+        reason === "missing_key"
+          ? "Live Q&A is unavailable because no server-side Gemini credential is configured. Prepared walkthroughs, tasks, and known prepared questions remain available."
+          : reason === "disabled"
+            ? "Live AI is disabled. Prepared questions, walkthroughs and tasks remain available."
+          : reason === "invalid_configuration"
+            ? "The AI provider configuration is invalid. Prepared content remains available."
+          : reason === "timeout"
+            ? "The AI request timed out. Try again or continue with the prepared learning content."
+            : "The AI service could not provide a verified response. Try again or continue with the prepared learning content.",
+      limitations: [
+        ...context.limitations,
+        reason === "missing_key"
+          ? "GEMINI_API_KEY must be configured on the server for live Q&A."
+          : "Provider failure details are intentionally omitted from the public response.",
+      ],
     };
   }
 }

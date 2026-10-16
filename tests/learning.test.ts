@@ -4,10 +4,12 @@ import { GET as guidesGet } from '@/app/api/guides/route';
 import { GET as taskGet } from '@/app/api/tasks/[id]/route';
 import { POST as attemptPost } from '@/app/api/tasks/[id]/attempt/route';
 import { POST as hintPost } from '@/app/api/tasks/[id]/hint/route';
+import { GET as progressGet } from '@/app/api/tasks/[id]/progress/route';
 import { GET as resultsGet } from '@/app/api/results/route';
 import { POST as resetPost } from '@/app/api/session/reset/route';
-import { getTask, publicLearning, requestHint, sessionResults, submitAttempt } from '@/lib/learning';
+import { getTask, publicLearning, requestHint, sessionResults, submitAttempt, taskSessionProgress } from '@/lib/learning';
 import { getEvidence } from '@/lib/repository';
+import { saveAttempt } from '@/lib/db';
 
 beforeAll(() => {
   process.env.MENTOR_DB_PATH = ':memory:';
@@ -109,5 +111,53 @@ describe('learning API validation and anonymous session isolation', () => {
     expect(await reset.json()).toEqual({ ok: true });
     expect(await resultsGet(request('/api/results', undefined, cookieA)).json()).toMatchObject({ totalAttempts: 0, hintsUsed: 0 });
     expect(await resultsGet(request('/api/results', undefined, cookieB)).json()).toMatchObject({ totalAttempts: 1, completed: 1 });
+  });
+});
+
+
+describe('saved checkpoint continuity', () => {
+  it('keeps feedback and hint text locked until this session has earned access', () => {
+    const session = randomUUID();
+    expect(taskSessionProgress(session, 'same-reference')).toEqual({ feedback: null, hintsUsed: 0 });
+    expect(JSON.stringify(taskSessionProgress(session, 'same-reference'))).not.toMatch(/explanation|submittedAnswer/);
+    const hint = requestHint(session, 'same-reference');
+    expect(taskSessionProgress(session, 'same-reference')).toEqual({ feedback: null, hintsUsed: 1, hint: hint.hint });
+    const invalidSession = randomUUID();
+    saveAttempt(invalidSession, 'same-reference', 'not-an-offered-choice', true, 0);
+    expect(taskSessionProgress(invalidSession, 'same-reference').feedback).toBeNull();
+  });
+
+  it('restores the latest valid feedback, submitted answer and historical hint count', () => {
+    const session = randomUUID(); const task = getTask('same-reference');
+    requestHint(session, task.id);
+    const wrong = submitAttempt(session, task.id, { snapshotId: task.snapshotId, answer: 'notify' });
+    expect(taskSessionProgress(session, task.id).feedback).toEqual(wrong);
+    requestHint(session, task.id);
+    expect(taskSessionProgress(session, task.id)).toMatchObject({ hintsUsed: 2, feedback: { hintsUsed: 1, correct: false, attemptNumber: 1 } });
+    const right = submitAttempt(session, task.id, { snapshotId: task.snapshotId, answer: 'skip' });
+    const restored = taskSessionProgress(session, task.id);
+    expect(restored.feedback).toEqual(right);
+    expect(restored).toMatchObject({ hintsUsed: 2, hint: expect.any(String), feedback: { correct: true, attemptNumber: 2, submittedAnswer: 'skip' } });
+    expect(taskSessionProgress(randomUUID(), task.id)).toEqual({ feedback: null, hintsUsed: 0 });
+    expect(getEvidence(restored.feedback!.evidenceIds[0]).snapshotId).toBe(task.snapshotId);
+  });
+
+  it('serves saved progress only to the signed session and clears it on reset', async () => {
+    const session = resultsGet(request('/api/results'));
+    const cookie = session.headers.get('set-cookie')!.split(';')[0];
+    const id = 'same-reference'; const task = getTask(id);
+    const empty = await progressGet(request(`/api/tasks/${id}/progress`, undefined, cookie), context(id));
+    expect(empty.headers.get('cache-control')).toBe('no-store');
+    expect(await empty.json()).toEqual({ feedback: null, hintsUsed: 0 });
+    await hintPost(new Request(`http://localhost/api/tasks/${id}/hint`, { method: 'POST', headers: { cookie } }), context(id));
+    await attemptPost(request(`/api/tasks/${id}/attempt`, { snapshotId: task.snapshotId, answer: 'skip' }, cookie), context(id));
+    const saved = await progressGet(request(`/api/tasks/${id}/progress`, undefined, cookie), context(id));
+    expect(saved.headers.get('set-cookie')).toBeNull();
+    expect(await saved.json()).toMatchObject({ hintsUsed: 1, feedback: { correct: true, attemptNumber: 1, submittedAnswer: 'skip' } });
+    const other = await progressGet(request(`/api/tasks/${id}/progress`), context(id));
+    expect(await other.json()).toEqual({ feedback: null, hintsUsed: 0 });
+    resetPost(new Request('http://localhost/api/session/reset', { method: 'POST', headers: { cookie } }));
+    expect(await (await progressGet(request(`/api/tasks/${id}/progress`, undefined, cookie), context(id))).json()).toEqual({ feedback: null, hintsUsed: 0 });
+    expect((await progressGet(request('/api/tasks/missing/progress', undefined, cookie), context('missing'))).status).toBe(404);
   });
 });

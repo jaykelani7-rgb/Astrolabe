@@ -58,3 +58,13 @@ The [question bank](questions.json) contains 24 questions: 16 development questi
 The proposed comparison with **6–8 peer participants is pending**. No participants, accuracy comparisons, task completion times, counterbalanced trials, or learning-effectiveness results have been collected. Source-reference checks and passing software tests cannot substitute for that study.
 
 The integration lead will add whole-application test/build results after the final learner journey has passed. Independent claim review, live evaluation, peer study, and a backup demonstration recording remain delivery follow-ups until actually completed.
+
+## Integrated Astrolabe redesign checks — 16 October 2026
+
+The redesigned application passed `npm run typecheck`, all **47 automated tests** (9 repository, 30 Q&A, 8 learning), and an optimized `npm run build`. The integrated browser suite passed **7/7 checks in 17.7 seconds**, including all four real rubrics, question scope, retained answers/history, returning from a checkpoint, reset/session isolation, keyboard panel controls, reload/stale state, desktop/laptop/mobile layouts, and browser-external-network-blocked prepared mode. The final source build preserves the existing backend evidence and scoring boundaries.
+
+The production browser JavaScript was inspected for selected private rubric explanations, the server credential name, and signing code; none of the inspected strings were present. This is a focused accidental-leak check, not a security audit. Full design-regression details, screenshots, and their limitations are in [REDESIGN-CHECKS.md](REDESIGN-CHECKS.md). Independent human claim review, live Gemini evaluation, the reserved held-out assessment and the participant study remain pending.
+
+## Walkthrough branch check — 16 October 2026
+
+The fetched `walkthrough-qa` feature at `e9a21e69b8affa32a6aa3fc769c07c6bab40d161` was integrated with the local redesign. The resulting app passed 85 automated tests, 10 browser checks, the optimized build, and 6 actual production HTTP checks. Prepared and live source scopes now enforce their file/line boundaries. [BRANCH-CHECKS.md](BRANCH-CHECKS.md) records the original branch checks, concrete fixes, regression cases and verification limits. No live-provider quality claim is added by these checks.

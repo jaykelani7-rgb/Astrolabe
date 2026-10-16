@@ -67,6 +67,7 @@ export interface Guide {
   steps: GuideStep[];
 }
 export interface PublicTask {
+  contentVersion?: string;
   id: string;
   snapshotId: string;
   title: string;
@@ -79,6 +80,8 @@ export interface PublicTask {
   topic: string;
 }
 export interface AttemptRecord {
+  snapshotId?: string;
+  contentVersion?: string;
   id: string;
   sessionId: string;
   taskId: string;
@@ -89,6 +92,8 @@ export interface AttemptRecord {
   createdAt: string;
 }
 export interface Feedback {
+  snapshotId?: string;
+  contentVersion?: string;
   taskId: string;
   correct: boolean;
   attemptNumber: number;
@@ -128,6 +133,7 @@ export interface Results {
   briefs: ContributionBrief[];
 }
 export interface QuestionInput {
+  scope?: "selection" | "file" | "repository" | "walkthrough";
   question: string;
   snapshotId: string;
   fileId?: string;
@@ -144,6 +150,11 @@ export interface WalkthroughContext {
   stepTitle?: string;
 }
 export interface QaResponse {
+  provider?: string;
+  model?: string;
+  answerId?: string;
+  blocks?: AnswerBlock[];
+  reviewState?: "authored" | "generated" | "human_reviewed";
   status: "answered" | "evidence_gap" | "unavailable";
   mode: "live" | "reviewed";
   answer: string;
@@ -165,6 +176,7 @@ export const rangeSchema = z
 export const attemptSchema = z
   .object({
     snapshotId: z.string().min(1).max(120),
+    contentVersion: z.string().min(1).max(160).optional(),
     answer: z.union([
       z.string().min(1).max(200),
       z.array(z.string().min(1).max(200)).max(12),
@@ -176,12 +188,15 @@ export const questionSchema = z
   .object({
     question: z.string().trim().min(3).max(1000),
     snapshotId: z.string().min(1).max(120),
-    fileId: z.string().max(160).optional(),
+    fileId: z.string().min(1).max(160).optional(),
     startLine: z.number().int().positive().optional(),
     endLine: z.number().int().positive().optional(),
     depth: z.enum(["beginner", "developer"]).optional(),
     guideId: z.string().min(1).max(120).optional(),
     stepId: z.string().min(1).max(120).optional(),
+    scope: z
+      .enum(["selection", "file", "repository", "walkthrough"])
+      .optional(),
   })
   .strict()
   .refine((v) => (v.startLine === undefined) === (v.endLine === undefined), {
@@ -190,9 +205,58 @@ export const questionSchema = z
   .refine((v) => !v.startLine || (!!v.fileId && v.endLine! >= v.startLine), {
     message: "A valid file and ordered lines are required.",
   })
+  .refine((v) => v.scope !== "file" || !!v.fileId, {
+    message: "File scope requires a file.",
+  })
+  .refine(
+    (v) =>
+      v.scope !== "selection" ||
+      (!!v.fileId && v.startLine !== undefined && v.endLine !== undefined),
+    {
+      message: "Selection scope requires a file and both line boundaries.",
+    },
+  )
   .refine((v) => !v.stepId || !!v.guideId, {
     message: "A walkthrough is required for a step.",
   })
-  .refine((v) => !v.guideId || !v.fileId, {
+  .refine((v) => !v.guideId || (!v.fileId && v.startLine === undefined), {
     message: "Choose either source or walkthrough context.",
+  })
+  .refine((v) => !v.guideId || !v.scope || v.scope === "walkthrough", {
+    message: "A walkthrough cannot use a conflicting source scope.",
+  })
+  .refine((v) => v.scope !== "walkthrough" || !!v.guideId, {
+    message: "Walkthrough scope requires a guide.",
   });
+
+export interface AnswerBlock {
+  text: string;
+  kind: "observed" | "inferred" | "unknown";
+  evidenceIds: string[];
+}
+export const learningGoalSchema = z.enum([
+  "architecture",
+  "debug",
+  "tests",
+  "documentation",
+]);
+export type LearningGoal = z.infer<typeof learningGoalSchema>;
+export const CONTENT_VERSION = "zustand-learning-v1";
+
+
+export interface ArchitectureOverview {
+  snapshotId: string;
+  commitSha: string;
+  reviewState: "authored";
+  humanReview: "pending";
+  modules: {
+    id: string; name: string; path: string; description: string; fileId: string;
+    evidenceIds: string[];
+    publicApis: { name: string; startLine: number; endLine: number }[];
+    reviewState: "authored";
+  }[];
+  readingOrder: string[];
+  relationships: ModuleMap["edges"];
+  unresolved: ModuleMap["unresolved"];
+  limitations: string[];
+}

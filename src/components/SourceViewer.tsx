@@ -110,10 +110,10 @@ export function SourceViewer({
           readOnly: true,
           domReadOnly: true,
           minimap: { enabled: false },
-          fontSize: 12,
+          fontSize: 14,
           fontFamily:
             '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
-          lineHeight: 23,
+          lineHeight: 25,
           padding: { top: 18, bottom: 20 },
           scrollBeyondLastLine: false,
           automaticLayout: true,

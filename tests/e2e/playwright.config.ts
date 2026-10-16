@@ -9,6 +9,6 @@ export default defineConfig({
   use: { baseURL: external || 'http://127.0.0.1:3100', ...devices['Desktop Chrome'], ...(process.env.MENTOR_E2E_CHANNEL ? { channel: process.env.MENTOR_E2E_CHANNEL } : {}), viewport: { width: 1440, height: 1000 }, video: process.env.MENTOR_E2E_VIDEO === 'off' ? 'off' : 'on', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   webServer: external ? undefined : {
     command: 'npm run dev -- --port 3100', cwd: path.resolve(__dirname, '../..'), url: 'http://127.0.0.1:3100', reuseExistingServer: false, timeout: 120_000,
-    env: { GEMINI_API_KEY: '', MENTOR_DB_PATH: path.resolve(__dirname, '../../.data/e2e.sqlite'), MENTOR_SESSION_SECRET: 'local-e2e-session-secret-reproducible-checks-only' },
+    env: { AI_PROVIDER: 'disabled', GEMINI_API_KEY: '', MENTOR_DB_PATH: path.resolve(__dirname, '../../.data/e2e.sqlite'), MENTOR_SESSION_SECRET: 'local-e2e-session-secret-reproducible-checks-only' },
   },
 });
