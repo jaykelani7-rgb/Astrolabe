@@ -1,6 +1,80 @@
 # Backend upgrade handoff
 
-This branch extends the existing prototype without editing UI components, pages, CSS or browser tests. The default Zustand journey and the original top-level Q&A response fields remain compatible. New capabilities are available through APIs; the UI owner must connect them before claiming an end-to-end screen feature.
+## Current integration — 16 October 2026
+
+Local `krishna` was safely fast-forwarded from `c82a71bf3478bfad516725dc0b47975b2739f3ed` to the fetched `origin/walkthrough-qa` at `7e3ad3df91f8abed1fa36072e2f65d480ef97062`. That includes integration commit `5269d665a73f73945c00553a19a551a28ffe0b70` and the teammate's teach-back follow-up. No recovery patch was reapplied. The newer UI, architecture panel, claim rendering, source-loading safeguards, LM Studio adapter and teach-back resume flow are preserved. Current work is local only; no push, main merge, deployment or PR is authorized by this development request.
+
+This update changes backend/provider/API/tests/documentation only. Source exploration, two default walkthroughs, four predictions, architecture, scoped Q&A/claim citations/browser history and two default teach-back rubrics are already connected to the website. Goals/ranking, notebook management/export, durable server answer history, additional snapshot selection/comparison and public code/symbol search still need UI integration. Earlier recovery sections below are historical, including their test counts and UI-gap descriptions. The latest verification record is `docs/BACKEND-DEVELOPMENT-2026-10-16.md`.
+
+### AI mechanism follow-up
+
+Development Q01/Q03/Q07/Q08/Q10 already retrieve the relevant implementations. The local one-block/70-word format could omit the identity guard, selector callback roles, listener argument order, hook API assignment direction and combine merge precedence. Both providers now receive a generic literal AST reading aid derived only from supplied excerpts, including condition/call/assignment line ranges and evidence IDs. Parsing incomplete windows fails closed. Added source text shares the existing 10,000-character budget; at most 20 syntax records and 1,800 repeated source characters are supplied. Retrieval remains at most eight evidence chunks, with strict selection/file/snapshot boundaries.
+
+The local response permits up to three bounded blocks and asks for at most 180 words. Provider selection remains explicit (`lmstudio`, `gemini`, `disabled`); there is no fallback. Prepared aliases are unchanged. Seven new tests cover the five source mechanisms, exact-selection confinement and both provider envelopes. These checks establish source/prompt behavior, not improved model accuracy. LM Studio is unreachable in this workspace; Gemini has no configured credential. Historical model results in `AI-QUALITY-2026-10-16.md` are not results of this changed prompt. Held-out questions were not used.
+
+### New notebook UI contracts
+
+All private calls use the existing signed HttpOnly session cookie and return `Cache-Control: no-store`; never supply a session ID. Always include the selected `snapshotId`. A bookmark preserves original answer context, response/review metadata, actual provider/model and source evidence. Editing changes only title/note; deletion does not delete the answer history. Practice reset preserves bookmarks and history.
+
+| Method and endpoint | Request | Success |
+| --- | --- | --- |
+| `POST /api/notebook/bookmarks` | `{snapshotId,title,note?,answerId?,evidenceIds?,briefId?}` | `{id,snapshotId,title,note,evidenceIds,revision:1,...}` |
+| `GET /api/notebook/bookmarks` | `?snapshotId=...&limit=20&offset=0` | `{snapshotId,bookmarks:[{id,snapshotId,category,createdAt,payload}],total,nextOffset}` |
+| `GET /api/notebook/bookmarks/[id]` | `?snapshotId=...` | A saved record; `payload` contains editable fields, revision and immutable provenance |
+| `PATCH /api/notebook/bookmarks/[id]` | `{snapshotId,revision,title?,note?}` | Updated record, incremented `payload.revision`, original `createdAt` and optional `payload.updatedAt` |
+| `DELETE /api/notebook/bookmarks/[id]` | `?snapshotId=...` | `{ok:true,id,snapshotId}` |
+| `GET /api/notebook` | `?snapshotId=...&againstSnapshotId=...` | Markdown attachment with original-commit permalinks and conservative freshness warnings |
+
+Listing defaults to 20, permits 1–100 records/page and offset 0–1,000,000; `nextOffset:null` ends pagination. Legacy bookmarks without revisions read as revision 1. Title is 1–160 trimmed characters; note at most 3,000. PATCH requires at least one editable field. Use the last returned revision; a competing/stale edit returns HTTP 409 `BOOKMARK_CONFLICT`, so reload before retrying. Unknown fields (including attempts to replace source/context) return 400. A missing or foreign bookmark returns 404, including another snapshot of the same repository. JSON mutations use `Content-Type: application/json` and the generic 8,192-byte body limit (bookmark creation retains its 12,000-byte limit).
+
+Example edit after reading a bookmark:
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","revision":1,"title":"Identity guard","note":"Check the unchanged-reference path."}
+```
+
+Example list envelope (record identifiers/prose omitted here):
+
+```json
+{"snapshotId":"zustand-0ea8be27db13","bookmarks":[],"total":0,"nextOffset":null}
+```
+
+Markdown export now uses the saved brief's evidence rather than substituting a current brief with the same title. It includes stored provider/model and original question context. Old records without those fields are labelled not recorded. Comparing snapshots of different repositories returns 409. Missing cited files, changed bytes or absent citations are not labelled verified fresh.
+
+### Public code/symbol search
+
+`GET /api/search?snapshotId=zustand-0ea8be27db13&q=setState&mode=symbol&limit=10` searches bundled source and the existing nested-symbol index. Required query is 2–200 characters and one to eight distinct Unicode letter/number/underscore/dollar terms. Matching is case-insensitive AND substring matching; punctuation has no query/operator semantics. `mode=code|symbol|all` defaults to `all`; optional `fileId` must belong to that snapshot. No host filesystem paths or arbitrary repository URLs are accepted.
+
+Results contain `{snapshotId,commitSha,query,mode,matches,total,nextCursor,limitations}`. Each match contains `{type,snapshotId,fileId,path,startLine,endLine,contentHash,preview,evidenceId}`; symbols add `{symbolId,name,kind,runtime}`. Ranges are inclusive, 1-based and validated through the canonical evidence mechanism. Preview is capped at 300 characters and can be shortened; fetch exact source using `GET /api/evidence/[id]?snapshotId=...`. This is static/literal search, not semantic search or execution analysis.
+
+`limit` defaults to 10, range 1–25. Pass the opaque `nextCursor` unchanged along with the original snapshot/query/mode/file filter. It is bound to the source commit and query; a changed context or malformed cursor returns 400 `INVALID_CURSOR`. A null cursor ends pagination. More than 5,000 candidate matches returns 422 `SEARCH_TOO_BROAD`; narrow the query/file. Unknown fields, including `path`, fail validation. Responses are public but `no-store`.
+
+### Snapshot/content-version and goal contracts
+
+Source, symbols, evidence, guides and retrieval caches use immutable snapshot/file identities. Attempts and hints use the selected task's `snapshotId` and `contentVersion`; content packs currently version as `zustand-learning-v1` or `<mitt-snapshotId>-learning-v1`. Teach-back requires both identifiers and rejects old content. History/bookmarks preserve original context and evidence; goals and saved position are session/snapshot scoped. New content versions intentionally do not silently regrade old attempts. Existing migration preserves legacy attempts under the original Zustand version.
+
+Send `contentVersion` from the public task in attempt JSON and on hint/progress query strings. Hints and progress now reject a provided stale version with 409 before reading/recording practice. With an explicit matching version they also return snapshot/content-version metadata. Requests omitting it retain the original response shape/default-current-version behavior for compatibility. Snapshot omission on legacy endpoints still defaults to Zustand; new notebook management and search require an explicit snapshot. UI code must supply the selected identity consistently and ignore late responses for old context.
+
+`GET /api/snapshots` and `POST /api/snapshots/compare` with `{fromSnapshotId,toSnapshotId}` already support selection/manual comparison for the three prepared snapshots. Comparison requires the same repository and returns changed-file/dependent-content flags. No extra backend comparison endpoint is needed. Old citations continue to use their original snapshot and commit, never the newly selected source.
+
+Goal example: `POST /api/learning/goal` with `{"snapshotId":"zustand-0ea8be27db13","goal":"debug"}` returns the same pair; `GET /api/learning/goal?snapshotId=...` returns that pair or `goal:null`. `GET /api/contributions?snapshotId=...` uses the saved goal (or documentation); optional `goal=architecture|debug|tests|documentation` overrides ranking without saving. Each recommendation includes curated brief/evidence, `goalMatch`, `status`, `reason`, `remediationTaskIds` and a deterministic ordering `score`. That score is not learner readiness. Current briefs are documentation proposals, not verified upstream opportunities; test/debug goals disclose this limitation.
+
+### Teach-back rubric assessment
+
+The two remaining default checkpoints (`update-order`, `react-initial-snapshot`) have source targets adequate for future concept rubrics (guard → assignment → listener arguments; initial-state selector callback). They remain explicitly unavailable in this update. The existing browser journey asserts the unavailable-rubric behavior when practicing update order, so adding a rubric would require a coordinated content/UI-test contract change. No assertions were changed to conceal that mismatch. Existing resume/self-review/follow-ups remain intact, with no automatic mastery grading or claimed human approval.
+
+### Exact next UI work
+
+1. Add saved goal controls → ranked curated recommendations → prerequisite task practice. Display recommendation limitations and distinguish ordering scores from assessment.
+2. Add bookmark save/list/read/title-note edit/delete controls with revision-conflict recovery, private Markdown download and source freshness states. Preserve saved response context/provider/review labels.
+3. Load durable signed-session `/api/questions/history?snapshotId=...` records and render their original contexts/citations; the current 12-entry browser history alone is not server resumption.
+4. Add snapshot selection and same-repository comparison; propagate snapshot/content version through all API calls, namespace local state and reject late responses. Keep historical citations pinned.
+5. Add code/symbol search controls using the bounded query/cursor contract and canonical evidence navigation; current filename filtering is narrower.
+6. Investigate the mobile teach-back reload race with the existing assertions preserved: restoration can leave Code selected while a one-time visibility check misses the asynchronously relabelled Checkpoint & mentor tab. Coordinate readiness/tab selection; do not treat a hidden panel as missing persisted data. Existing architecture, claim rendering, loading guards and teach-back screens should be retained.
+
+## Historical recovery implementation and verification
+
+The sections below describe the earlier recovery checkpoint; use the current integration above and latest verification record for present status.
 
 ## Implemented capabilities
 
