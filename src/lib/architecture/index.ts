@@ -6,7 +6,7 @@ import {
   getSnapshot,
   getSource,
   listFiles,
-  listSymbols,
+  listPublicApis,
 } from "@/lib/repository";
 import { registerContentDependency } from "@/lib/db";
 export function architectureOverview(snapshotId?: string): ArchitectureOverview {
@@ -89,13 +89,7 @@ export function architectureOverview(snapshotId?: string): ArchitectureOverview 
         ...definition,
         fileId: file.fileId,
         evidenceIds,
-        publicApis: listSymbols(file.fileId, snapshot.snapshotId)
-          .filter((symbol) => symbol.topLevel !== false && !symbol.name.startsWith("_"))
-          .map((symbol) => ({
-            name: symbol.name,
-            startLine: symbol.startLine,
-            endLine: symbol.endLine,
-          })),
+        publicApis: listPublicApis(file.fileId, snapshot.snapshotId),
         reviewState: "authored" as const,
       },
     ];

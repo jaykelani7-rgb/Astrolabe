@@ -11,6 +11,7 @@ import type {
 } from "@/contracts";
 import { AppError } from "@/lib/api";
 import { getDb } from "@/lib/db";
+import { publicExports, type PublicApi } from './exports';
 
 interface Manifest extends Snapshot {
   tag: string;
@@ -33,6 +34,7 @@ interface Prepared {
   byId: Map<string, SourceDocument>;
   moduleMap: ModuleMap;
   symbols: SourceSymbol[];
+  exports: Map<string, PublicApi[]>;
 }
 const preparedSnapshots = new Map<string, Prepared>();
 const indexedConnections = new WeakMap<object, Set<string>>();
@@ -147,8 +149,8 @@ function prepare(requestedSnapshotId?: string): Prepared {
   )
     throw new Error("The snapshot must contain unique source files.");
   const byId = new Map(documents.map((d) => [d.file.fileId, d]));
-  const { moduleMap, symbols } = analyzeSource(documents);
-  const prepared = { snapshot, documents, byId, moduleMap, symbols };
+  const { moduleMap, symbols, exports } = analyzeSource(documents);
+  const prepared = { snapshot, documents, byId, moduleMap, symbols, exports };
   preparedSnapshots.set(id, prepared);
   return prepared;
 }
@@ -156,6 +158,7 @@ function prepare(requestedSnapshotId?: string): Prepared {
 function analyzeSource(documents: SourceDocument[]): {
   moduleMap: ModuleMap;
   symbols: SourceSymbol[];
+  exports: Map<string, PublicApi[]>;
 } {
   // In-memory AST parsing prevents compiler/plugin/config execution in the analyzed repo.
   const project = new Project({
@@ -180,8 +183,11 @@ function analyzeSource(documents: SourceDocument[]): {
   const unresolved: ModuleMap["unresolved"] = [];
   const edgeIds = new Set<string>();
   const symbols: SourceSymbol[] = [];
+  const exports = new Map<string, PublicApi[]>();
+  const sources = new Map(documents.map(({ file, content }) => [file.fileId, project.createSourceFile('/' + file.path, content)]));
   for (const { file, content } of documents) {
-    const source = project.createSourceFile("/" + file.path, content);
+    const source = sources.get(file.fileId)!;
+    exports.set(file.fileId, publicExports(source));
     const topLevel = [
       ...source.getFunctions(), ...source.getClasses(), ...source.getInterfaces(), ...source.getTypeAliases(),
       ...source.getVariableStatements().flatMap((statement) => statement.getDeclarations()),
@@ -267,7 +273,7 @@ function analyzeSource(documents: SourceDocument[]): {
       }
     }
   }
-  return { moduleMap: { nodes, edges, unresolved }, symbols };
+  return { moduleMap: { nodes, edges, unresolved }, symbols, exports };
 }
 
 function assertSnapshot(snapshotId?: string): void {
@@ -461,6 +467,10 @@ export function listSymbols(
   return prepare(snapshotId)
     .symbols.filter((symbol) => !fileId || symbol.fileId === fileId)
     .map((symbol) => ({ ...symbol }));
+}
+export function listPublicApis(fileId: string, snapshotId?: string): PublicApi[] {
+  documentFor(fileId, snapshotId);
+  return structuredClone(prepare(snapshotId).exports.get(fileId) ?? []);
 }
 export function evidenceForRange(
   fileId: string,
