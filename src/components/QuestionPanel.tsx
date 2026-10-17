@@ -122,11 +122,19 @@ function restoreAnswer(record: StoredAnswer, snapshotId: string, files: SourceFi
 }
 
 function mergeHistory(current: HistoryEntry[], restored: HistoryEntry[]) {
-  const key = (entry: HistoryEntry) => entry.response.answerId ?? entry.id;
-  const currentById = new Map(current.map(entry => [key(entry), entry]));
-  const restoredIds = new Set(restored.map(key));
-  // Server rows establish chronology; retain the richer original POST metadata for matching rows.
-  return [...current.filter(entry => !restoredIds.has(key(entry))), ...restored.map(entry => currentById.get(key(entry)) ?? entry)].slice(0, 100);
+  const replaced = new Set(restored.map(entry => entry.id));
+  const merged = restored.map(entry => {
+    // Canonical IDs retain the original POST metadata. Legacy browser IDs
+    // differ from server IDs, so also match their original request; a shared
+    // answer ID alone must not collapse distinct legacy contexts.
+    const cached = current.find(candidate =>
+      candidate.id === entry.id || (candidate.response.answerId === entry.id
+      && JSON.stringify(requestBody(candidate.context)) === JSON.stringify(requestBody(entry.context))));
+    if (cached) replaced.add(cached.id);
+    return cached ?? entry;
+  });
+  // Server rows establish chronology while unmatched legacy contexts stay readable.
+  return [...current.filter(entry => !replaced.has(entry.id)), ...merged].slice(0, 100);
 }
 
 function answerLabel(response: QaResponse) {

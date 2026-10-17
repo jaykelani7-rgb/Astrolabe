@@ -241,6 +241,7 @@ describe("grounded question answers", () => {
   });
 
   it("clearly reports missing credentials without falling back to an invented answer", async () => {
+    vi.stubEnv("AI_PROVIDER", "gemini");
     vi.stubEnv("GEMINI_API_KEY", "");
     const { store } = fixture();
     const result = await answerQuestion(input, { repository: store });

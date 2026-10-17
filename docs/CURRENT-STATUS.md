@@ -1,5 +1,7 @@
 # Current backend and AI status — 17 October 2026
 
+**Superseded for the combined application by [integrated verification](COMBINED-VERIFICATION-2026-10-17.md).** The UI merge connects the interfaces listed as pending below; the final integrated browser run passed 35/35, including mobile teach-back reload. This document retains the earlier backend-only and live-AI checkpoint evidence.
+
 This is the current status record. Earlier audit, quality and recovery reports describe their own checkpoints; their missing-key, cross-file-blocked, test-count and timeout statements are historical, not the results below.
 
 ## Checkout and changes

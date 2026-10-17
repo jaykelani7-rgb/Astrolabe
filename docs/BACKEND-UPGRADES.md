@@ -1,5 +1,7 @@
 # Backend upgrade handoff
 
+**Latest integrated handoff: [combined application verification](COMBINED-VERIFICATION-2026-10-17.md).** It supersedes the unfinished-interface and mobile-failure status below after merging UI `3507f93` with backend `acf8634`; all 35 browser journeys passed, with zero live Gemini calls during combined verification.
+
 **Current authority: [17 October backend and AI status](CURRENT-STATUS.md).** It records the new local commits, 167 tests, TypeScript/build, 19 HTTP groups, successful strict live Gemini gates, current limits and exact UI work. Sections below retain earlier checkpoint observations; their 12-second deadline, missing-key and blocked cross-file statements are historical. Endpoint examples and version/session contracts below remain current unless explicitly superseded.
 
 ## Gemini adapter correction — 17 October 2026

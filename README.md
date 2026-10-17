@@ -2,7 +2,7 @@
 
 **Your codebase mentor.**
 
-Current backend verification, limitations and UI handoff: [17 October status](docs/CURRENT-STATUS.md). Older audit/evaluation reports describe historical checkpoints.
+Current combined verification and limitations: [17 October integrated status](docs/COMBINED-VERIFICATION-2026-10-17.md). The earlier [backend/AI checkpoint](docs/CURRENT-STATUS.md) and other audit/evaluation reports describe historical observations.
 
 A working local learning workspace for an unfamiliar codebase. Explore real source, follow a flow, predict what happens before seeing feedback, verify the explanation against exact source lines, and leave with a small contribution brief.
 

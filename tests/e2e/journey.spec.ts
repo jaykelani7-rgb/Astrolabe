@@ -123,7 +123,7 @@ test('explicit question scopes preserve answers, original context and history wh
   await expect(source(page)).toContainText('src/vanilla.ts');
   await page.getByRole('radio', { name: 'Repository', exact: true }).check();
   const repository = await ask(page, 'How does setState work?');
-  expect(repository).toEqual({ question: 'How does setState work?', snapshotId: expect.any(String), depth: 'beginner' });
+  expect(repository).toEqual({ question: 'How does setState work?', snapshotId: expect.any(String), scope: 'repository', depth: 'beginner' });
   await expect(answer(page).locator('.response-label')).toHaveText('Prepared answer');
   await expect(answer(page).locator('.mentor-answer-context')).toContainText('Zustand · whole repository');
   const firstAnswer = await answer(page).locator('.mentor-answer-text').textContent();
@@ -134,7 +134,7 @@ test('explicit question scopes preserve answers, original context and history wh
 
   await page.getByRole('radio', { name: 'Current file', exact: true }).check();
   const file = await ask(page, 'How do I unsubscribe?');
-  expect(file.fileId).toMatch(/^file_/); expect(file).not.toHaveProperty('startLine'); expect(file).not.toHaveProperty('endLine');
+  expect(file.scope).toBe('file'); expect(file.fileId).toMatch(/^file_/); expect(file).not.toHaveProperty('startLine'); expect(file).not.toHaveProperty('endLine');
   await expect(answer(page).locator('.mentor-answer-context')).toContainText('src/vanilla.ts · whole file');
   // A narrow selection must not borrow the Set declaration from lines60–64.
   await answer(page).getByRole('button', { name: 'src/vanilla.ts · lines 88–92', exact: true }).click();
@@ -150,8 +150,8 @@ test('explicit question scopes preserve answers, original context and history wh
   await expect(page.getByRole('radio', { name: 'Selected lines', exact: true })).toBeEnabled();
   await page.getByRole('radio', { name: 'Selected lines', exact: true }).check();
   const selected = await ask(page, 'How does setState update state?');
-  expect(selected).toMatchObject({ fileId: file.fileId, startLine: 66, endLine: 81 });
-  expect(Object.keys(selected).sort()).toEqual(['depth', 'endLine', 'fileId', 'question', 'snapshotId', 'startLine']);
+  expect(selected).toMatchObject({ scope: 'selection', fileId: file.fileId, startLine: 66, endLine: 81 });
+  expect(Object.keys(selected).sort()).toEqual(['depth', 'endLine', 'fileId', 'question', 'scope', 'snapshotId', 'startLine']);
   await expect(answer(page).locator('.mentor-answer-context')).toContainText('src/vanilla.ts · lines 66–81');
   const selectedAnswer = await answer(page).locator('.mentor-answer-text').textContent();
   await page.locator('.file-list').getByRole('button', { name: 'TS react.ts', exact: true }).click();

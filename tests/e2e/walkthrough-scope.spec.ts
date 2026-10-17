@@ -47,7 +47,7 @@ test('walkthrough questions retain their original flow and step through citation
   await page.getByRole('radio', { name: 'This walkthrough', exact: true }).check();
   await expect(page.locator('.mentor-current-context')).toContainText(guide.steps[0].title);
   const submitted = await submit(page, 'What is getInitialState?');
-  expect(submitted).toEqual({ question: 'What is getInitialState?', snapshotId: guide.snapshotId, depth: 'beginner', guideId: guide.id, stepId: guide.steps[0].id });
+  expect(submitted).toEqual({ question: 'What is getInitialState?', snapshotId: guide.snapshotId, scope: 'walkthrough', depth: 'beginner', guideId: guide.id, stepId: guide.steps[0].id });
   await expect(mentorAnswer(page).locator('.response-label')).toHaveText('Prepared answer');
   await expect(mentorAnswer(page).locator('.mentor-citation')).toHaveCount(2);
   await expect(originalContext(page)).toContainText(guide.title);
@@ -82,7 +82,7 @@ test('walkthrough questions retain their original flow and step through citation
   await navigate(page, 'Explore');
   await expect(page.getByRole('radio', { name: 'This walkthrough', exact: true })).toBeDisabled();
   await expect(page.getByRole('radio', { name: 'Current file', exact: true })).toBeChecked();
-  await expect(page.locator('.mentor-context-notice')).toContainText('The next question uses Current file');
+  await expect(page.locator('.mentor-composer').getByRole('status').filter({ hasText: 'The next question uses Current file' })).toContainText('The next question uses Current file');
   await expect(originalContext(page)).toContainText(guide.title);
   await navigate(page, 'Learn');
   await expect(page.getByRole('radio', { name: 'This walkthrough', exact: true })).toBeEnabled();
@@ -116,7 +116,8 @@ test('four scope controls fit mobile, support keyboard selection and retain walk
   await expect(scopes.getByRole('radio', { name: 'This walkthrough', exact: true })).toBeFocused();
   await expect(scopes.getByRole('radio', { name: 'This walkthrough', exact: true })).toBeChecked();
   const body = await submit(page, 'What is getInitialState?');
-  expect(Object.keys(body).sort()).toEqual(['depth', 'guideId', 'question', 'snapshotId', 'stepId']);
+  expect(body.scope).toBe('walkthrough');
+  expect(Object.keys(body).sort()).toEqual(['depth', 'guideId', 'question', 'scope', 'snapshotId', 'stepId']);
   await mentorAnswer(page).getByRole('button', { name: 'src/vanilla.ts · lines 83–96', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Code', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.source-context')).toContainText('Lines 83–96');
