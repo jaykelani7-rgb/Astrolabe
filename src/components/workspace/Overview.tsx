@@ -16,7 +16,7 @@ export function Overview({ workspace: w }: { workspace: Workspace }) {
   const returning =
     w.visited.length > 0 || (w.progress?.totalAttempts || 0) > 0;
   const recommended =
-    w.files.find((f) => f.path === "src/vanilla.ts") || w.files[0];
+    w.files.find(file => file.fileId === w.recommendedFileId) || w.files[0];
   const stepCount = w.guides.reduce((count, g) => count + g.steps.length, 0);
   return (
     <section className="overview-page" aria-label="Repository overview">

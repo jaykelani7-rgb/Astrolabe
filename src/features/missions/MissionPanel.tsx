@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { Depth, Evidence, Feedback, PublicTask } from '@/contracts';
+import type { Depth, Evidence, Feedback, PublicTask, SourceFile } from '@/contracts';
 import './missions.css';
 import { TeachBackPanel } from './TeachBackPanel';
 
 type Range = { fileId: string; startLine: number; endLine: number };
-type Progress = { feedback: Feedback | null; hintsUsed: number; hint?: string };
+type Progress = { snapshotId: string; contentVersion: string; feedback: Feedback | null; hintsUsed: number; hint?: string };
 interface MissionProps {
   taskId: string;
+  snapshotId: string;
+  sourceFiles: SourceFile[];
   depth: Depth;
   onEvidence: (evidenceId: string) => void;
   onComplete: () => void;
@@ -25,12 +27,12 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return value;
 }
 
-export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRange, onContinue, onTask, continueLabel = 'Continue walkthrough' }: MissionProps) {
+export function MissionPanel({ taskId, snapshotId, sourceFiles, depth, onEvidence, onComplete, selectedRange, onContinue, onTask, continueLabel = 'Continue walkthrough' }: MissionProps) {
   const [task, setTask] = useState<PublicTask | null>(null);
   const [choice, setChoice] = useState('');
   const [order, setOrder] = useState<string[]>([]);
   const [range, setRange] = useState({ startLine: '', endLine: '' });
-  const [rangeFile, setRangeFile] = useState('');
+  const [rangeSource, setRangeSource] = useState<SourceFile | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [hint, setHint] = useState('');
   const [hintCount, setHintCount] = useState(0);
@@ -42,18 +44,27 @@ export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRa
 
   useEffect(() => {
     const current = ++generation.current;
+    const controller = new AbortController();
     setTask(null); setChoice(''); setOrder([]); setRange({ startLine: '', endLine: '' });
-    setRangeFile(''); setFeedback(null); setHint(''); setHintCount(0); setError(''); setBusy(false);
+    setRangeSource(null); setFeedback(null); setHint(''); setHintCount(0); setError(''); setBusy(false);
     lastSelection.current = '';
-    Promise.all([
-      api<PublicTask>(`/api/tasks/${encodeURIComponent(taskId)}`),
-      api<Progress>(`/api/tasks/${encodeURIComponent(taskId)}/progress`),
-    ]).then(async ([value, progress]) => {
-      const target = value.type === 'range'
-        ? await api<Evidence>(`/api/evidence/${encodeURIComponent(value.contextEvidenceIds[0])}?snapshotId=${encodeURIComponent(value.snapshotId)}`)
-        : undefined;
+    const context = new URLSearchParams({ snapshotId });
+    api<PublicTask>(`/api/tasks/${encodeURIComponent(taskId)}?${context}`, { signal: controller.signal }).then(async value => {
       if (current !== generation.current) return;
-      setTask(value); setOrder(value.choices.map(entry => entry.id)); setRangeFile(target?.fileId || '');
+      if (value.snapshotId !== snapshotId || value.id !== taskId) throw new Error('This checkpoint belongs to a different source snapshot. Open it again from the selected repository.');
+      if (!value.contentVersion) throw new Error('This checkpoint has no content version. Reload it before restoring or saving practice.');
+      const versioned = new URLSearchParams({ snapshotId, contentVersion: value.contentVersion });
+      const [progress, target] = await Promise.all([
+        api<Progress>(`/api/tasks/${encodeURIComponent(taskId)}/progress?${versioned}`, { signal: controller.signal }),
+        value.type === 'range'
+          ? api<Evidence>(`/api/evidence/${encodeURIComponent(value.contextEvidenceIds[0])}?${context}`, { signal: controller.signal })
+          : Promise.resolve(undefined),
+      ]);
+      if (current !== generation.current) return;
+      if (progress.snapshotId !== snapshotId || progress.contentVersion !== value.contentVersion) throw new Error('Saved practice belongs to a different checkpoint version. Reload the checkpoint.');
+      const targetFile = target ? sourceFiles.find(file => file.fileId === target.fileId && file.snapshotId === snapshotId) : undefined;
+      if (value.type === 'range' && !targetFile) throw new Error('The source metadata for this checkpoint is unavailable. Reload the repository before selecting lines.');
+      setTask(value); setOrder(value.choices.map(entry => entry.id)); setRangeSource(targetFile || null);
       setFeedback(progress.feedback); setHint(progress.hint || ''); setHintCount(progress.hintsUsed);
       const answer = progress.feedback?.submittedAnswer;
       if (value.type === 'choice' && typeof answer === 'string') setChoice(answer);
@@ -62,16 +73,16 @@ export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRa
         setRange({ startLine: String(answer.startLine), endLine: String(answer.endLine) });
       }
     }).catch(failure => { if (current === generation.current) setError(failure.message); });
-    return () => { generation.current++; };
-  }, [taskId, loadVersion]);
+    return () => { generation.current++; controller.abort(); };
+  }, [taskId, snapshotId, sourceFiles, loadVersion]);
 
   useEffect(() => {
-    if (!selectedRange || !rangeFile || selectedRange.fileId !== rangeFile) return;
+    if (!selectedRange || !rangeSource || selectedRange.fileId !== rangeSource.fileId) return;
     const key = `${selectedRange.fileId}:${selectedRange.startLine}:${selectedRange.endLine}`;
     if (lastSelection.current === key) return;
     lastSelection.current = key;
     if (!feedback) setRange({ startLine: String(selectedRange.startLine), endLine: String(selectedRange.endLine) });
-  }, [selectedRange, rangeFile, feedback]);
+  }, [selectedRange, rangeSource, feedback]);
 
   function move(index: number, direction: number) {
     const next = [...order];
@@ -85,9 +96,10 @@ export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRa
     setBusy(true); setError('');
     const answer = task.type === 'choice' ? choice : task.type === 'ordering' ? order : { startLine: Number(range.startLine), endLine: Number(range.endLine) };
     try {
-      const value = await api<Feedback>(`/api/tasks/${task.id}/attempt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId: task.snapshotId, answer }) });
-      onComplete();
+      const value = await api<Feedback>(`/api/tasks/${encodeURIComponent(task.id)}/attempt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId: task.snapshotId, contentVersion: task.contentVersion, answer }) });
       if (current !== generation.current) return;
+      if (value.snapshotId !== task.snapshotId || value.contentVersion !== task.contentVersion || value.taskId !== task.id) throw new Error('This response belongs to another checkpoint version. Reload your saved practice.');
+      onComplete();
       setFeedback(value); setHintCount(value.hintsUsed);
     } catch (failure) { if (current === generation.current) setError((failure as Error).message); }
     finally { if (current === generation.current) setBusy(false); }
@@ -98,27 +110,29 @@ export function MissionPanel({ taskId, depth, onEvidence, onComplete, selectedRa
     const current = generation.current;
     setBusy(true); setError('');
     try {
-      const value = await api<{ hint: string; hintsUsed: number }>(`/api/tasks/${task.id}/hint`, { method: 'POST' });
-      onComplete();
+      const context = new URLSearchParams({ snapshotId: task.snapshotId, contentVersion: task.contentVersion! });
+      const value = await api<{ snapshotId: string; contentVersion: string; hint: string; hintsUsed: number }>(`/api/tasks/${encodeURIComponent(task.id)}/hint?${context}`, { method: 'POST' });
       if (current !== generation.current) return;
+      if (value.snapshotId !== task.snapshotId || value.contentVersion !== task.contentVersion) throw new Error('This hint belongs to another checkpoint version. Reload your saved practice.');
+      onComplete();
       setHint(value.hint); setHintCount(value.hintsUsed);
     } catch (failure) { if (current === generation.current) setError((failure as Error).message); }
     finally { if (current === generation.current) setBusy(false); }
   }
 
-  if (!task) return <section className="mission-panel" aria-label="Prediction checkpoint" aria-live="polite">
+  if (!task) return <section className="mission-panel" aria-label="Prediction checkpoint" aria-live="polite" aria-busy={!error} data-checkpoint-state={error ? 'error' : 'restoring'}>
     {error ? <><p role="alert">{error}</p><button type="button" className="text-button" onClick={() => setLoadVersion(value => value + 1)}>Try loading again</button></> : <p role="status" className="muted">Loading checkpoint and your saved attempt…</p>}
   </section>;
 
-  const ready = task.type === 'choice' ? Boolean(choice) : task.type === 'ordering' ? order.length > 0 : Number.isInteger(Number(range.startLine)) && Number.isInteger(Number(range.endLine)) && Number(range.startLine) >= 1 && Number(range.endLine) >= Number(range.startLine) && Number(range.endLine) <= 100;
-  return <section className="mission-panel" aria-label="Prediction checkpoint">
+  const ready = task.type === 'choice' ? Boolean(choice) : task.type === 'ordering' ? order.length > 0 : Boolean(rangeSource) && Number.isInteger(Number(range.startLine)) && Number.isInteger(Number(range.endLine)) && Number(range.startLine) >= 1 && Number(range.endLine) >= Number(range.startLine) && Number(range.endLine) <= rangeSource!.lineCount;
+  return <section className="mission-panel" aria-label="Prediction checkpoint" aria-busy={busy} data-checkpoint-state="ready" data-snapshot-id={task.snapshotId} data-content-version={task.contentVersion}>
     <div className="mission-heading"><span className="mission-kicker">Prediction checkpoint</span><span className="mission-type">{task.type === 'range' ? 'Select source lines' : task.type === 'ordering' ? 'Order the steps' : 'Choose one'}</span></div>
     <h3>{task.title}</h3><p className="mission-prompt">{task.prompt}</p>
     <div className="mission-context">{task.contextEvidenceIds.map((id, index) => <button type="button" className="evidence-link" onClick={() => onEvidence(id)} key={id}>Inspect source{task.contextEvidenceIds.length > 1 ? ` ${index + 1}` : ''} ↗</button>)}</div>
     {!feedback && <>
       {task.type === 'choice' && <fieldset className="mission-choices"><legend className="sr-only">Your prediction</legend>{task.choices.map(option => <label key={option.id} className={`mission-choice ${choice === option.id ? 'selected' : ''}`}><input type="radio" name={`answer-${task.id}`} value={option.id} checked={choice === option.id} onChange={() => setChoice(option.id)} disabled={busy} /><span>{option.label}</span></label>)}</fieldset>}
       {task.type === 'ordering' && <ol className="mission-order">{order.map((id, index) => <li key={id}><span className="mission-order-number">{index + 1}</span><span>{task.choices.find(item => item.id === id)?.label}</span><div className="mission-order-actions"><button type="button" aria-label={`Move step ${index + 1} up`} disabled={busy || index === 0} onClick={() => move(index, -1)}>↑</button><button type="button" aria-label={`Move step ${index + 1} down`} disabled={busy || index === order.length - 1} onClick={() => move(index, 1)}>↓</button></div></li>)}</ol>}
-      {task.type === 'range' && <div className="mission-range"><p className="muted">Select lines in the source viewer, or enter the inclusive range in src/vanilla.ts.</p><label>Start line<input aria-label="Start line" type="number" min={1} max={100} value={range.startLine} onChange={event => setRange({ ...range, startLine: event.target.value })} disabled={busy} /></label><span aria-hidden="true">→</span><label>End line<input aria-label="End line" type="number" min={1} max={100} value={range.endLine} onChange={event => setRange({ ...range, endLine: event.target.value })} disabled={busy} /></label>{selectedRange && rangeFile && selectedRange.fileId !== rangeFile && <p role="status" className="mission-warning">Open src/vanilla.ts to use a source selection for this checkpoint.</p>}</div>}
+      {task.type === 'range' && <div className="mission-range"><p className="muted">Select lines in the source viewer, or enter the inclusive range in {rangeSource?.path} (1–{rangeSource?.lineCount}).</p><label>Start line<input aria-label="Start line" type="number" min={1} max={rangeSource?.lineCount} value={range.startLine} onChange={event => setRange({ ...range, startLine: event.target.value })} disabled={busy} /></label><span aria-hidden="true">→</span><label>End line<input aria-label="End line" type="number" min={1} max={rangeSource?.lineCount} value={range.endLine} onChange={event => setRange({ ...range, endLine: event.target.value })} disabled={busy} /></label>{selectedRange && rangeSource && selectedRange.fileId !== rangeSource.fileId && <p role="status" className="mission-warning">Open {rangeSource.path} to use a source selection for this checkpoint.</p>}</div>}
       <div className="mission-actions"><button type="button" className="primary-button" onClick={submit} disabled={!ready || busy}>{busy ? 'Saving…' : 'Submit prediction'}</button><button type="button" className="text-button" onClick={getHint} disabled={busy || Boolean(hint)}>{hint ? 'Hint saved' : 'Get a hint'}</button></div>
       {hint && <aside className="mission-hint"><strong>Hint · saved in your session</strong><p>{hint}</p></aside>}
       <p className="mission-note">Your explanation appears after an attempt. {hintCount > 0 ? `${hintCount} hint request${hintCount === 1 ? '' : 's'} recorded.` : 'Hints and retries appear in your progress.'}</p>

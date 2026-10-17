@@ -19,7 +19,7 @@ export function GuidePanel({ workspace: w }: { workspace: Workspace }) {
     setReferences([]);
     Promise.all(
       step.evidenceIds.map((id) =>
-        api<Evidence>("/api/evidence/" + encodeURIComponent(id)),
+        api<Evidence>("/api/evidence/" + encodeURIComponent(id) + "?snapshotId=" + encodeURIComponent(w.snapshot!.snapshotId)),
       ),
     )
       .then((values) => {

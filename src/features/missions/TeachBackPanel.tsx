@@ -30,11 +30,17 @@ export function TeachBackPanel({ task, onEvidence, onTask }: Props) {
     const current = ++generation.current;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
-    setProgress(null); setError(''); setBusy(false);
-    const query = new URLSearchParams({ taskId: task.id, snapshotId: task.snapshotId, contentVersion: task.contentVersion || '' });
+    setProgress(null); setText(''); setAssessments({}); setError(''); setBusy(false);
+    if (!task.contentVersion) {
+      clearTimeout(timeout);
+      setError('This checkpoint has no content version. Reload it before saving an explanation.');
+      return () => { generation.current++; controller.abort(); };
+    }
+    const query = new URLSearchParams({ taskId: task.id, snapshotId: task.snapshotId, contentVersion: task.contentVersion });
     api<TeachBackProgress>(`/api/teach-back?${query}`, { cache: 'no-store', signal: controller.signal })
       .then(value => {
         if (current !== generation.current) return;
+        if (value.snapshotId !== task.snapshotId || value.taskId !== task.id || value.contentVersion !== task.contentVersion) throw new Error('This saved explanation belongs to another checkpoint version. Reload the checkpoint.');
         setProgress(value); restore(value.submission);
       }).catch(failure => {
         if (current === generation.current) setError(failure.name === 'AbortError' ? 'Loading took too long. Try loading your explanation again.' : failure.message);
@@ -56,6 +62,7 @@ export function TeachBackPanel({ task, onEvidence, onTask }: Props) {
         } : { taskId: task.id, snapshotId: task.snapshotId, contentVersion: task.contentVersion, text: text.trim() }),
       });
       if (current !== generation.current) return;
+      if (value.snapshotId !== task.snapshotId || value.taskId !== task.id || value.contentVersion !== task.contentVersion) throw new Error('This saved explanation belongs to another checkpoint version. Reload the checkpoint.');
       setProgress({ ...progress, submission: value }); restore(value);
     } catch (failure) {
       if (current === generation.current) setError((failure as Error).name === 'TimeoutError'
@@ -66,7 +73,7 @@ export function TeachBackPanel({ task, onEvidence, onTask }: Props) {
 
   const submission = progress?.submission;
   const ready = submission?.concepts.every(concept => Boolean(assessments[concept.id]));
-  return <section className="teach-back" aria-label="Explain in your own words" aria-busy={busy}>
+  return <section className="teach-back" aria-label="Explain in your own words" aria-busy={busy || (!progress && !error)} data-teach-back-state={!progress ? error ? 'error' : 'restoring' : !progress.available ? 'unavailable' : submission ? 'saved' : 'draft'}>
     <span className="mission-kicker">Teach-back</span>
     <h4>Explain in your own words</h4>
     {!progress ? error ? <><p role="alert" className="mission-warning">{error}</p><button type="button" className="text-button" onClick={() => setReload(value => value + 1)}>Reload explanation</button></> : <p role="status">Loading your saved explanation…</p> : !progress.available ? <p className="mission-note">This checkpoint has no prepared teach-back rubric yet. You can still verify the feedback against its source.</p> : <>

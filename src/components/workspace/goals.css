@@ -1,0 +1,36 @@
+.learning-goals { margin-top: 36px; padding-top: 26px; border-top: 1px solid var(--border); }
+.learning-goals h2 { font-size: 27px; font-weight: 550; line-height: 1.25; }
+.learning-goals :is(.goals-intro, .goal-boundary, .goal-ranking-context, .goal-limitations) { color: var(--muted); font-size: 13px; line-height: 1.8; margin: 14px 0; }
+.goal-form { max-width: 730px; margin: 22px 0 16px; }
+.goal-form > label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 9px; }
+.goal-form-controls { display: flex; flex-wrap: wrap; gap: 12px; }
+.goal-form select { flex: 1; min-width: 220px; max-width: 100%; min-height: 44px; padding: 10px 34px 10px 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface, #fbfaf6); color: var(--ink, #303c34); font: inherit; font-size: 14px; }
+.goal-form :is(select, button):focus-visible { outline: 2px solid #3c7c6d; outline-offset: 3px; }
+.goal-form :is(select, button):disabled { cursor: wait; opacity: .65; }
+.goal-save-status { font-size: 13px; color: #416b54; }
+.goal-error { padding: 14px; color: #9f3e30; background: #faeee6; border-radius: 5px; margin: 16px 0; }
+.goal-error p { font-size: 14px; line-height: 1.6; }
+.goal-recommendations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; list-style: none; padding: 0; margin: 26px 0; }
+.goal-recommendations > li { min-width: 0; }
+.goal-recommendation { height: 100%; padding: 20px 0; border-top: 1px solid var(--border); }
+.goal-recommendation-heading { display: flex; align-items: flex-start; gap: 13px; }
+.goal-rank { padding-top: 3px; color: #6b806c; font: 12px "SFMono-Regular", Consolas, monospace; }
+.goal-proposal-label { color: #6b806c; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.goal-recommendation h3 { font-size: 21px; line-height: 1.35; font-weight: 550; margin: 8px 0; }
+.goal-recommendation :is(p, li) { color: var(--muted); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.goal-recommendation p { margin: 10px 0; }
+.goal-recommendation .goal-match { color: #4c705a; font-size: 12px; }
+.goal-recommendation h4 { font-size: 13px; font-weight: 600; margin: 18px 0 7px; }
+.goal-prerequisites { padding: 1px 14px 12px; background: #f0f2e9; border-radius: 5px; margin: 18px 0; }
+.goal-prerequisites > ul { padding: 0; list-style: none; }
+.goal-prerequisites > ul > li { padding: 12px 0; border-top: 1px solid #dbe1d5; }
+.goal-prerequisites strong { color: var(--ink, #303c34); font-weight: 550; }
+.goal-recommendation .text-button { min-height: 44px; font-size: 12px; text-align: left; line-height: 1.5; white-space: normal; }
+.goal-recommendation .text-button:disabled { cursor: not-allowed; opacity: .6; }
+.goal-recommendation details { margin: 18px 0; }
+.goal-recommendation summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #4c705a; font-size: 13px; font-weight: 550; }
+.goal-recommendation details :is(ul, ol) { padding-left: 20px; }
+.goal-proposal-actions, .goal-completed-practice { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.goal-limitations { padding-left: 20px; }
+@media (max-width: 900px) { .goal-recommendations { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+@media (max-width: 500px) { .learning-goals h2 { font-size: 23px; } .goal-form select, .goal-form .primary-button { width: 100%; } .goal-recommendation h3 { font-size: 20px; } }

@@ -94,10 +94,16 @@ function PanelDivider({
     </div>
   );
 }
-export function SourceWorkspace({ workspace: w }: { workspace: Workspace }) {
+export function SourceWorkspace({ workspace: w, onHistoricalEvidence }: { workspace: Workspace; onHistoricalEvidence: (id:string,snapshotId?:string)=>void }) {
   const [mobileTab, setMobileTab] = useState<"files" | "code" | "mentor">(
     "code",
   );
+  useEffect(() => {
+    if (w.activeTaskId) setMobileTab("mentor");
+  }, [w.activeTaskId]);
+  useEffect(() => {
+    if (w.view === "explore") setMobileTab("code");
+  }, [w.view]);
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1200);
   useEffect(() => {
@@ -124,7 +130,8 @@ export function SourceWorkspace({ workspace: w }: { workspace: Workspace }) {
     "minmax(360px, 1fr)",
     ...(showMentor ? ["8px", `${mentorWidth}px`] : []),
   ].join(" ");
-  function inspectEvidence(id: string) {
+  function inspectEvidence(id: string, sourceSnapshot?: string) {
+    if(sourceSnapshot && sourceSnapshot !== w.snapshot?.snapshotId) { onHistoricalEvidence(id,sourceSnapshot); return; }
     void w.openEvidence(id);
     if (window.innerWidth <= 1100) setMobileTab("code");
   }
@@ -256,6 +263,7 @@ export function SourceWorkspace({ workspace: w }: { workspace: Workspace }) {
         <div id="workspace-files" className="files-slot">
           <FileExplorer
             workspace={w}
+            onEvidence={inspectEvidence}
             onCollapse={() => w.updatePreference("filesCollapsed", true)}
             onReveal={() => setMobileTab("files")}
           />
@@ -433,6 +441,9 @@ export function SourceWorkspace({ workspace: w }: { workspace: Workspace }) {
                     <span>Step {w.stepIndex + 1} · checkpoint</span>
                   </div>
                   <MissionPanel
+                    key={w.snapshot!.snapshotId+":"+w.activeTaskId+":"+w.tasks.find(task=>task.id===w.activeTaskId)?.contentVersion}
+                    snapshotId={w.snapshot!.snapshotId}
+                    sourceFiles={w.files}
                     taskId={w.activeTaskId}
                     onTask={w.openCheckpoint}
                     depth={w.depth}
