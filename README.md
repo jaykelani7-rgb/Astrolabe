@@ -2,13 +2,15 @@
 
 **Your codebase mentor.**
 
+Current backend verification, limitations and UI handoff: [17 October status](docs/CURRENT-STATUS.md). Older audit/evaluation reports describe historical checkpoints.
+
 A working local learning workspace for an unfamiliar codebase. Explore real source, follow a flow, predict what happens before seeing feedback, verify the explanation against exact source lines, and leave with a small contribution brief.
 
 The prepared repository is [pmndrs/zustand](https://github.com/pmndrs/zustand), tag **v5.0.8**, pinned to **`0ea8be27db13019819fc1c0492e5b672dd7b6f4b`**. All 15 TypeScript source files and the upstream MIT license are bundled. The app never installs dependencies or executes code from the repository being studied.
 
 ## Start locally
 
-Use **Node.js 24 LTS** (minimum 22.13 with native `node:sqlite` and FTS5), npm, and a current browser.
+Use **Node.js 24 LTS** (freshly checked 24.19.0; minimum 22.13 with native `node:sqlite` and FTS5), **npm 11.19.0** for the reproduced setup, and a current browser.
 
 ```sh
 npm ci
@@ -52,7 +54,7 @@ GEMINI_API_KEY=your_key_here
 GEMINI_MODEL=gemini-3.8-flash
 ```
 
-Restart the server after changing environment variables. The key stays server-side and is sent to Google in the request header. The adapter sends the question and bounded retrieved source excerpts to Gemini. Source text is treated as untrusted data. Provider requests time out after 12 seconds. No real Gemini call has been verified here because no credential was supplied. The optional local provider is verified separately below; its answer quality still needs independent review.
+Restart the server after changing environment variables. The key stays server-side and is sent to Google in the request header. The adapter sends the question and bounded retrieved source excerpts to Gemini. Source text is treated as untrusted data. Gemini has a 45-second total budget with at most one bounded retry for transient HTTP failures. The latest prepared/cache-disabled Gemini run passed both required source/cross-file answers and both unsupported-question gaps; see [current evidence and limits](docs/CURRENT-STATUS.md). This establishes those pipeline outcomes, not universal answer correctness. Local-provider observations below are historical; independent human review remains pending.
 
 Try these prepared questions with an explicit scope:
 

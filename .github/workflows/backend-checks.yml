@@ -1,0 +1,39 @@
+name: Backend checks (browser coverage separate)
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AI_PROVIDER: disabled
+      GEMINI_API_KEY: ''
+      MENTOR_DB_PATH: ${{ github.workspace }}/.data/ci/mentor.sqlite
+      MENTOR_DATA_DIR: ${{ github.workspace }}/.data/ci
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - name: Pinned npm tooling
+        run: npm install --global npm@11.19.0
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run verify:http
+      - name: Retain HTTP report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-http-reports
+          path: .data/verification/http-*/report.json
+          if-no-files-found: ignore
+      # Browser assertions stay with the UI owner. This job does not declare
+      # the full website green while the known mobile reload race remains.

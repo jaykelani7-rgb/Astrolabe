@@ -1,5 +1,7 @@
 # Backend upgrade handoff
 
+**Current authority: [17 October backend and AI status](CURRENT-STATUS.md).** It records the new local commits, 167 tests, TypeScript/build, 19 HTTP groups, successful strict live Gemini gates, current limits and exact UI work. Sections below retain earlier checkpoint observations; their 12-second deadline, missing-key and blocked cross-file statements are historical. Endpoint examples and version/session contracts below remain current unless explicitly superseded.
+
 ## Gemini adapter correction — 17 October 2026
 
 Local changes on `krishna` correct `generationConfig.responseFormat.text.mimeType` from the HTTP MIME string to the API enum `APPLICATION_JSON`. The actual HTTP Content-Type remains `application/json`; schemas, citation validation, evidence-gap handling and the 12-second deadline are unchanged. The documented HTTP 400 was freshly reproduced. A new outgoing-request regression failed before the correction and passed afterward. All 151 automated tests, TypeScript, production build and 19 production HTTP groups passed.
