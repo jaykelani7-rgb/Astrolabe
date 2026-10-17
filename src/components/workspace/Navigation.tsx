@@ -1,6 +1,7 @@
 "use client";
 import {
   BookOpen,
+  NotebookPen,
   Compass,
   LayoutDashboard,
   PanelLeftClose,
@@ -13,12 +14,15 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { Snapshot } from "@/contracts";
+import { SnapshotControls } from "./SnapshotControls";
 import type { Workspace, WorkspaceView } from "@/lib/client/workspace";
 const items: { id: WorkspaceView; label: string; icon: typeof Compass }[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "explore", label: "Explore", icon: Compass },
   { id: "learn", label: "Learn", icon: BookOpen },
   { id: "progress", label: "My progress", icon: Trophy },
+  { id: "notebook", label: "Saved notebook", icon: NotebookPen },
 ];
 export function Navigation({
   workspace: w,
@@ -117,9 +121,13 @@ export function Navigation({
 export function RepositoryHeader({
   workspace: w,
   onMenu,
+  snapshots,
+  onSwitch,
 }: {
   workspace: Workspace;
   onMenu: () => void;
+  snapshots: Snapshot[];
+  onSwitch: (id:string) => void;
 }) {
   const [status, setStatus] = useState<{
     provider?: string;
@@ -175,6 +183,7 @@ export function RepositoryHeader({
           <ExternalLink size={12} />
         </a>
       )}
+      <SnapshotControls snapshot={w.snapshot} snapshots={snapshots} onSwitch={onSwitch} />
       <div className="answer-mode">
         <span className="mode-dot" />
         <span>

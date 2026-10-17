@@ -82,8 +82,8 @@ export function SourceViewer({
   return (
     <div className="editor-container" data-testid="source-viewer">
       <Editor
-        path={document.file.path}
-        language="typescript"
+        path={document.file.snapshotId + "/" + document.file.path}
+        language={document.file.language.toLowerCase().includes("javascript") ? "javascript" : "typescript"}
         value={document.content}
         theme="mentor"
         onMount={onMount}

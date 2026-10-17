@@ -185,6 +185,8 @@ test('explicit question scopes preserve answers, original context and history wh
   await ask(page, 'Explain Kubernetes deployment authentication security.');
   await expect(answer(page).locator('.response-label')).toHaveText('Evidence gap');
   await expect(answer(page).locator('.mentor-citation')).toHaveCount(0);
+  await expect(answer(page).locator('.mentor-next-action')).toContainText('Repository scope was already used');
+  await expect(answer(page).getByRole('button', { name: 'Use Repository scope', exact: true })).toHaveCount(0);
   await page.route('**/api/questions', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'TEST_UNAVAILABLE', message: 'Temporary test failure.' } }) }), { times: 1 });
   await page.getByRole('textbox', { name: 'Ask a question about this code' }).fill('Keep my draft after a failure');
   await page.getByRole('button', { name: 'Send question', exact: true }).click();

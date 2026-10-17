@@ -11,17 +11,20 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Workspace } from "@/lib/client/workspace";
+import { CodeSearch } from "./CodeSearch";
 export function FileExplorer({
   workspace: w,
   onCollapse,
   onReveal,
+  onEvidence,
 }: {
   workspace: Workspace;
   onCollapse: () => void;
   onReveal: () => void;
+  onEvidence: (id:string,snapshotId?:string)=>void;
 }) {
   const [filter, setFilter] = useState("");
-  const [leftTab, setLeftTab] = useState<"files" | "flow">(
+  const [leftTab, setLeftTab] = useState<"files" | "flow" | "search">(
     w.view === "learn" ? "flow" : "files",
   );
   const search = useRef<HTMLInputElement>(null);
@@ -51,7 +54,7 @@ export function FileExplorer({
   return (
     <aside
       className="files-panel"
-      aria-label={leftTab === "flow" ? "Learning outline" : "Source files"}
+      aria-label={leftTab === "flow" ? "Learning outline" : leftTab === "search" ? "Search source" : "Source files"}
     >
       <div className="panel-title-row">
         <div className="left-panel-tabs">
@@ -62,6 +65,7 @@ export function FileExplorer({
             <Folder size={15} />
             Files
           </button>
+          <button className={leftTab === "search" ? "active" : ""} onClick={()=>setLeftTab("search")}><Search size={15} />Search code</button>
           {w.view === "learn" && (
             <button
               className={leftTab === "flow" ? "active" : ""}
@@ -80,7 +84,7 @@ export function FileExplorer({
           <X size={16} />
         </button>
       </div>
-      {leftTab === "files" ? (
+      {leftTab === "search" ? <CodeSearch snapshotId={w.snapshot!.snapshotId} files={w.files} onEvidence={onEvidence} /> : leftTab === "files" ? (
         <>
           <div className="file-search">
             <Search size={15} />

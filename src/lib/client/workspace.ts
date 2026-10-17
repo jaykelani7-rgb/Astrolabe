@@ -11,7 +11,7 @@ import type {
   SourceFile,
 } from "@/contracts";
 import { api } from "./api";
-export type WorkspaceView = "overview" | "explore" | "learn" | "progress";
+export type WorkspaceView = "overview" | "explore" | "learn" | "progress" | "notebook";
 export type SourceRange = { startLine: number; endLine: number };
 export interface Preferences {
   railCollapsed: boolean;
@@ -29,11 +29,12 @@ const defaults: Preferences = {
   fileWidth: 220,
   mentorWidth: 360,
 };
-const views: WorkspaceView[] = ["overview", "explore", "learn", "progress"];
-export function useWorkspace() {
+const views: WorkspaceView[] = ["overview", "explore", "learn", "progress", "notebook"];
+export function useWorkspace(snapshotId: string) {
   const [view, setView] = useState<WorkspaceView>("overview");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [files, setFiles] = useState<SourceFile[]>([]);
+  const [recommendedFileId, setRecommendedFileId] = useState("");
   const [map, setMap] = useState<ModuleMap | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [tasks, setTasks] = useState<PublicTask[]>([]);
@@ -54,6 +55,11 @@ export function useWorkspace() {
   const sourceRequest = useRef(0);
   const progressRequest = useRef(0);
   const hydrated = useRef(false);
+  const versions = useRef("");
+  const positionSaves = useRef(Promise.resolve());
+  const positionRequest = useRef(0);
+  const positionGeneration = useRef(0);
+  const positionController = useRef<AbortController | null>(null);
   const activeGuide = guides.find((g) => g.id === guideId) || guides[0];
   const activeStep = activeGuide?.steps[stepIndex];
   const navigate = useCallback((next: WorkspaceView) => {
@@ -68,12 +74,12 @@ export function useWorkspace() {
   const refreshProgress = useCallback(async () => {
     const id = ++progressRequest.current;
     try {
-      const result = await api<Results>("/api/results");
+      const result = await api<Results>("/api/results?snapshotId=" + encodeURIComponent(snapshotId));
       if (id === progressRequest.current) setProgress(result);
     } catch (e) {
-      setError((e as Error).message);
+      if (id === progressRequest.current) setError((e as Error).message);
     }
-  }, []);
+  }, [snapshotId]);
   const openFile = useCallback(
     async (fileId: string, selection?: SourceRange, showSource = true) => {
       const id = ++sourceRequest.current;
@@ -81,9 +87,10 @@ export function useWorkspace() {
       setError("");
       try {
         const source = await api<SourceDocument>(
-          "/api/repository/source?fileId=" + encodeURIComponent(fileId),
+          "/api/repository/source?" + new URLSearchParams({ fileId, snapshotId }),
         );
         if (id !== sourceRequest.current) return;
+        if (source.file.snapshotId !== snapshotId) throw new Error("This source belongs to a different snapshot.");
         setDocument(source);
         setRange(
           selection
@@ -97,7 +104,7 @@ export function useWorkspace() {
         if (id === sourceRequest.current) setSourceLoading(false);
       }
     },
-    [],
+    [snapshotId],
   );
   const openEvidence = useCallback(
     async (evidenceId: string) => {
@@ -106,9 +113,10 @@ export function useWorkspace() {
       setError("");
       try {
         const evidence = await api<Evidence>(
-          "/api/evidence/" + encodeURIComponent(evidenceId),
+          "/api/evidence/" + encodeURIComponent(evidenceId) + "?snapshotId=" + encodeURIComponent(snapshotId),
         );
         if (id !== sourceRequest.current) return;
+        if (evidence.snapshotId !== snapshotId) throw new Error("This reference belongs to a different snapshot.");
         await openFile(evidence.fileId, {
           startLine: evidence.startLine,
           endLine: evidence.endLine,
@@ -120,10 +128,13 @@ export function useWorkspace() {
         }
       }
     },
-    [openFile],
+    [openFile, snapshotId],
   );
   useEffect(() => {
     let live = true;
+    hydrated.current = false;
+    positionGeneration.current++;
+    positionController.current = new AbortController();
     try {
       const p = JSON.parse(
         localStorage.getItem("astrolabe:preferences") || "null",
@@ -149,12 +160,20 @@ export function useWorkspace() {
       /* Missing or stale preferences use defaults. */
     }
     Promise.all([
-      api<{ snapshot: Snapshot; files: SourceFile[] }>("/api/repository"),
-      api<ModuleMap>("/api/repository/map"),
-      api<{ guides: Guide[]; tasks: PublicTask[] }>("/api/guides"),
+      api<{ snapshot: Snapshot; files: SourceFile[] }>("/api/repository?snapshotId=" + encodeURIComponent(snapshotId)),
+      api<ModuleMap>("/api/repository/map?snapshotId=" + encodeURIComponent(snapshotId)),
+      api<{ guides: Guide[]; tasks: PublicTask[] }>("/api/guides?snapshotId=" + encodeURIComponent(snapshotId)),
+      api<{progress: {payload: {snapshotId: string; guideId: string; stepId: string}} | null}>("/api/progress?snapshotId=" + encodeURIComponent(snapshotId)).catch(() => { if (live) setError("Saved walkthrough position could not be loaded. This device’s saved position is still available."); return {progress: null}; }),
     ])
-      .then(([repo, modules, learning]) => {
+      .then(async ([repo, modules, learning, position]) => {
         if (!live) return;
+        if (repo.snapshot.snapshotId !== snapshotId || learning.guides.some(guide => guide.snapshotId !== snapshotId) || learning.tasks.some(task => task.snapshotId !== snapshotId)) throw new Error("The loaded learning content belongs to a different snapshot.");
+        versions.current = JSON.stringify(learning.tasks.map(task => [task.id, task.contentVersion]).sort());
+        const firstEvidenceId = learning.guides[0]?.steps[0]?.evidenceIds[0];
+        const startingEvidence = firstEvidenceId ? await api<Evidence>("/api/evidence/" + encodeURIComponent(firstEvidenceId) + "?snapshotId=" + encodeURIComponent(snapshotId)) : null;
+        if (!live) return;
+        const startingFile = repo.files.find(file => file.fileId === startingEvidence?.fileId) || repo.files[0];
+        setRecommendedFileId(startingFile?.fileId || "");
         setSnapshot(repo.snapshot);
         setFiles(repo.files);
         setMap(modules);
@@ -171,15 +190,20 @@ export function useWorkspace() {
         } catch {
           /* Invalid saved state is ignored. */
         }
-        const guide =
-          learning.guides.find((g) => g.id === saved.guideId) ||
-          learning.guides[0];
+        if (saved.contentVersions && saved.contentVersions !== versions.current) {
+          delete saved.guideId; delete saved.stepIndex; delete saved.activeTaskId; delete saved.visited;
+        }
+        const serverPosition = position.progress?.payload;
+        const serverGuide = serverPosition?.snapshotId === snapshotId ? learning.guides.find(g => g.id === serverPosition.guideId) : undefined;
+        const guide = learning.guides.find((g) => g.id === saved.guideId) || serverGuide || learning.guides[0];
+        if (!guide || !repo.files.length) throw new Error("No learning content or source files are available in this snapshot.");
+        const serverStep = serverGuide?.id === guide.id ? guide.steps.findIndex(step => step.id === serverPosition?.stepId) : 0;
         const step =
           Number.isInteger(saved.stepIndex) &&
           Number(saved.stepIndex) >= 0 &&
           Number(saved.stepIndex) < guide.steps.length
             ? Number(saved.stepIndex)
-            : 0;
+            : Math.max(0, serverStep);
         setGuideId(guide.id);
         setStepIndex(step);
         setActiveTaskId(
@@ -213,8 +237,7 @@ export function useWorkspace() {
           setHasOpenedWorkspace(true);
         const file =
           repo.files.find((f) => f.fileId === saved.fileId) ||
-          repo.files.find((f) => f.path === "src/vanilla.ts") ||
-          repo.files[0];
+          startingFile;
         const candidate = saved.range as SourceRange | undefined;
         const selection =
           candidate &&
@@ -245,10 +268,12 @@ export function useWorkspace() {
     };
     window.addEventListener("popstate", pop);
     return () => {
-      live = false;
+      live = false; hydrated.current = false;
+      sourceRequest.current++; progressRequest.current++; positionRequest.current++;
+      positionGeneration.current++; positionController.current?.abort();
       window.removeEventListener("popstate", pop);
     };
-  }, [openFile, refreshProgress]);
+  }, [openFile, refreshProgress, snapshotId]);
   useEffect(() => {
     if (!hydrated.current || !snapshot || !document) return;
     try {
@@ -256,6 +281,7 @@ export function useWorkspace() {
         "astrolabe:workspace:" + snapshot.snapshotId,
         JSON.stringify({
           view,
+          contentVersions: versions.current,
           fileId: document.file.fileId,
           range,
           guideId,
@@ -286,7 +312,19 @@ export function useWorkspace() {
     tab,
     preferences,
   ]);
+  function savePosition(guide: Guide, index: number) {
+    const request = ++positionRequest.current;
+    const generation = positionGeneration.current;
+    const signal = positionController.current?.signal;
+    const payload = { snapshotId, guideId: guide.id, stepId: guide.steps[index].id };
+    positionSaves.current = positionSaves.current.catch(() => {}).then(async () => {
+      if (generation !== positionGeneration.current || request !== positionRequest.current || signal?.aborted) return;
+      try { await api("/api/progress", { method: "POST", body: JSON.stringify(payload), signal }); }
+      catch (reason) { if (request === positionRequest.current) setError((reason as Error).message); }
+    });
+  }
   function visit(guide: Guide, index: number) {
+    savePosition(guide, index);
     const key = guide.id + ":" + guide.steps[index].id;
     setVisited((current) =>
       current.includes(key) ? current : [...current, key],
@@ -354,6 +392,7 @@ export function useWorkspace() {
     navigate,
     snapshot,
     files,
+    recommendedFileId,
     map,
     guides,
     tasks,

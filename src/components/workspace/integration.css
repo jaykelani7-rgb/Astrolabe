@@ -1,0 +1,13 @@
+.snapshot-controls {display:flex; align-items:center; gap:12px; margin-left:auto; min-width:0;}
+.snapshot-controls select {max-width:230px; min-height:36px; border:1px solid var(--line,#d7ddd3); border-radius:6px; background:var(--paper,#faf9f3); padding:6px 9px; color:inherit; font:inherit; font-size:12px;}
+.snapshot-comparison {position:relative; font-size:12px;}
+.snapshot-comparison summary {cursor:pointer; white-space:nowrap;}
+.snapshot-comparison-panel {position:absolute; z-index:40; right:0; top:28px; background:var(--paper,#faf9f3); border:1px solid var(--line,#d7ddd3); box-shadow:0 10px 30px #25352e20; border-radius:8px; width:min(540px,calc(100vw - 32px)); max-height:70vh; overflow:auto; padding:22px;}
+.snapshot-comparison-panel h2 {font-size:19px; margin-bottom:10px;}
+.snapshot-comparison-panel h3 {font-size:14px; margin:18px 0 9px;}
+.snapshot-comparison-panel label {display:grid; gap:8px; margin:12px 0;}
+.snapshot-comparison-panel p {line-height:1.65; margin:10px 0;}
+.snapshot-comparison-panel ul {padding-left:18px; display:grid;gap:8px;overflow-wrap:anywhere;}
+.integration-loading {min-height:100vh;display:grid;place-content:center;gap:18px;padding:30px;}
+@media (max-width:1100px) {.repository-header{flex-wrap:wrap;gap:12px!important; height:auto!important;min-height:84px;}.snapshot-controls{order:5;width:100%;justify-content:flex-end;}.snapshot-controls select{max-width:100%;}.snapshot-comparison-panel{right:0;}}
+@media (max-width:600px) {.snapshot-controls{justify-content:space-between;gap:8px;}.snapshot-select{flex:1;min-width:0;}.snapshot-select select{width:100%;}.snapshot-comparison summary{font-size:11px;}.answer-mode{margin-left:auto!important;}}

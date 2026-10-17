@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowUpRight, BookOpen, ChevronRight, History, MessageSquare, RotateCcw } from "lucide-react";
+import { ArrowUpRight, BookmarkPlus, BookOpen, ChevronRight, History, MessageSquare, RotateCcw } from "lucide-react";
 import { z } from "zod";
 import type { Depth, Guide, GuideStep, QuestionInput, Snapshot, SourceDocument, SourceFile, QaResponse } from "@/contracts";
 import { api } from "@/lib/client/api";
 import "./question-panel.css";
+import "./workspace/notebook.css";
 
 type Scope = "repository" | "file" | "selection" | "walkthrough";
 type QuestionContext = { question: string; snapshotId: string; scope: Scope; depth: Depth; fileId?: string; path?: string; startLine?: number; endLine?: number; guideId?: string; guideTitle?: string; stepId?: string; stepTitle?: string };
 type HistoryEntry = { id: string; context: QuestionContext; response: QaResponse };
 type FailedQuestion = { context: QuestionContext; message: string };
 type AnswerStatus = { provider?: string; preparedAvailable: boolean; liveConfigured: boolean; liveStatus: "unverified" };
+type StoredAnswer = { id: string; snapshotId: string; createdAt: string; payload: { question: string; context: QuestionInput; response: QaResponse; model?: string | null; provider?: string | null } };
 const HISTORY_LIMIT = 12;
 const storageKey = (snapshotId: string) => `astrolabe:mentor-history:v1:${snapshotId}`;
 const scopeNames: Record<Scope, string> = { repository: "Repository", file: "Current file", selection: "Selected lines", walkthrough: "This walkthrough" };
@@ -80,7 +82,10 @@ function readSaved(snapshotId: string): { entries: HistoryEntry[]; selectedId: s
 }
 
 function writeSaved(snapshotId: string, entries: HistoryEntry[], selectedId: string | null, draft: string, scope: Scope) {
-  try { window.localStorage.setItem(storageKey(snapshotId), JSON.stringify({ version: 1, snapshotId, entries: entries.slice(0, HISTORY_LIMIT), selectedId, draft, scope })); }
+  const selected = entries.find(entry => entry.id === selectedId);
+  const cached = entries.slice(0, HISTORY_LIMIT);
+  if (selected && !cached.some(entry => entry.id === selected.id)) cached.splice(HISTORY_LIMIT - 1, 1, selected);
+  try { window.localStorage.setItem(storageKey(snapshotId), JSON.stringify({ version: 1, snapshotId, entries: cached, selectedId, draft, scope })); }
   catch { /* The session still works if browser storage is unavailable or full. */ }
 }
 
@@ -91,10 +96,37 @@ function contextLabel(context: QuestionContext, repositoryName: string) {
 }
 
 function requestBody(context: QuestionContext): QuestionInput {
-  return { question: context.question, snapshotId: context.snapshotId, depth: context.depth,
+  return { question: context.question, snapshotId: context.snapshotId, scope: context.scope, depth: context.depth,
     ...(context.scope === "file" || context.scope === "selection" ? { fileId: context.fileId } : {}),
     ...(context.scope === "walkthrough" ? { guideId: context.guideId, stepId: context.stepId } : {}),
     ...(context.scope === "selection" ? { startLine: context.startLine, endLine: context.endLine } : {}) };
+}
+
+function restoreAnswer(record: StoredAnswer, snapshotId: string, files: SourceFile[], guides: Guide[]): HistoryEntry | null {
+  if (record.snapshotId !== snapshotId || record.payload.context.snapshotId !== snapshotId) return null;
+  const input = record.payload.context;
+  const scope = input.scope ?? (input.guideId ? "walkthrough" : input.startLine !== undefined ? "selection" : input.fileId ? "file" : "repository");
+  const guide = guides.find(item => item.id === input.guideId);
+  const step = guide?.steps.find(item => item.id === input.stepId);
+  const response = record.payload.response;
+  const parsed = entrySchema.safeParse({ id: record.id, context: {
+    question: record.payload.question, snapshotId, scope, depth: input.depth ?? "beginner",
+    ...(input.fileId ? { fileId: input.fileId, path: files.find(file => file.fileId === input.fileId)?.path ?? input.fileId } : {}),
+    ...(input.startLine !== undefined ? { startLine: input.startLine, endLine: input.endLine } : {}),
+    ...(input.guideId ? { guideId: input.guideId, guideTitle: guide?.title ?? input.guideId, stepId: input.stepId, stepTitle: step?.title ?? input.stepId } : {}),
+  }, response: { ...response, answerId: record.id,
+    ...(response.mode === "live" ? { provider: response.provider ?? record.payload.provider ?? undefined, model: response.model ?? record.payload.model ?? undefined } : {}),
+    citations: response.citations.map(citation => ({ ...citation, text: "" })),
+  } });
+  return parsed.success && parsed.data.response.citations.every(citation => citation.snapshotId === snapshotId) ? parsed.data : null;
+}
+
+function mergeHistory(current: HistoryEntry[], restored: HistoryEntry[]) {
+  const key = (entry: HistoryEntry) => entry.response.answerId ?? entry.id;
+  const currentById = new Map(current.map(entry => [key(entry), entry]));
+  const restoredIds = new Set(restored.map(key));
+  // Server rows establish chronology; retain the richer original POST metadata for matching rows.
+  return [...current.filter(entry => !restoredIds.has(key(entry))), ...restored.map(entry => currentById.get(key(entry)) ?? entry)].slice(0, 100);
 }
 
 function answerLabel(response: QaResponse) {
@@ -105,7 +137,7 @@ function answerLabel(response: QaResponse) {
 
 export function QuestionPanel({ snapshot, document, range, depth, onEvidence, files, guide, step, sourceLoading = false }: {
   snapshot: Snapshot; document: SourceDocument | null; range: { startLine: number; endLine: number } | null;
-  depth: Depth; onEvidence: (id: string) => void; files?: SourceFile[]; guide?: Guide; step?: GuideStep; sourceLoading?: boolean;
+  depth: Depth; onEvidence: (id: string, snapshotId?: string) => void; files?: SourceFile[]; guide?: Guide; step?: GuideStep; sourceLoading?: boolean;
 }) {
   const uid = useId();
   const [question, setQuestion] = useState("");
@@ -116,8 +148,14 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
   const [failed, setFailed] = useState<FailedQuestion | null>(null);
   const [loadedSnapshot, setLoadedSnapshot] = useState<string | null>(null);
   const [inventory, setInventory] = useState<SourceFile[]>([]);
+  const [questionGuides, setQuestionGuides] = useState<Guide[]>([]);
   const [availability, setAvailability] = useState<AnswerStatus | null>(null);
   const [scopeNotice, setScopeNotice] = useState("");
+  const [historyStatus, setHistoryStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [historyReload, setHistoryReload] = useState(0);
+  const [bookmarkDraft, setBookmarkDraft] = useState<{ answerId: string; title: string; note: string } | null>(null);
+  const [bookmarkStatus, setBookmarkStatus] = useState("");
+  const [bookmarkPending, setBookmarkPending] = useState(false);
   const currentSnapshot = useRef(snapshot.snapshotId);
   const requestNumber = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -144,7 +182,27 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
     const saved = readSaved(snapshot.snapshotId);
     setHistory(saved.entries); setSelectedId(saved.selectedId); setQuestion(saved.draft); setScope(saved.scope);
     setPending(null); setFailed(null); setScopeNotice(""); setLoadedSnapshot(snapshot.snapshotId);
+    setBookmarkDraft(null); setBookmarkStatus(""); setBookmarkPending(false); setQuestionGuides([]);
+    return () => { currentSnapshot.current = ""; requestNumber.current++; };
   }, [snapshot.snapshotId]);
+  useEffect(() => {
+    let cancelled = false;
+    const snapshotId = snapshot.snapshotId;
+    setHistoryStatus("loading");
+    Promise.all([
+      api<{ answers: StoredAnswer[] }>(`/api/questions/history?snapshotId=${encodeURIComponent(snapshotId)}`, { cache: "no-store" }),
+      api<{ guides: Guide[] }>(`/api/guides?snapshotId=${encodeURIComponent(snapshotId)}`).catch(() => ({ guides: [] })),
+      files ? Promise.resolve({ files }) : api<{ files: SourceFile[] }>(`/api/repository?snapshotId=${encodeURIComponent(snapshotId)}`).catch(() => ({ files: [] })),
+    ]).then(([value, learning, repository]) => {
+      if (cancelled || currentSnapshot.current !== snapshotId) return;
+      const entries = value.answers.slice().reverse().map(record => restoreAnswer(record, snapshotId, repository.files, learning.guides)).filter((entry): entry is HistoryEntry => !!entry);
+      setQuestionGuides(learning.guides);
+      setHistory(previous => mergeHistory(previous, entries));
+      setSelectedId(previous => previous ?? entries[0]?.id ?? null);
+      setHistoryStatus("ready");
+    }).catch(() => { if (!cancelled && currentSnapshot.current === snapshotId) setHistoryStatus("failed"); });
+    return () => { cancelled = true; };
+  }, [snapshot.snapshotId, files, historyReload]);
   useEffect(() => {
     if (loadedSnapshot === snapshot.snapshotId) writeSaved(snapshot.snapshotId, history, selectedId, question, scope);
   }, [snapshot.snapshotId, loadedSnapshot, history, selectedId, question, scope]);
@@ -173,13 +231,14 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
   }, [scope, validRange, hasFile, hasWalkthrough, sourceLoading, loadedSnapshot, snapshot.snapshotId]);
   useEffect(() => {
     let cancelled = false;
-    api<AnswerStatus>("/api/questions/status").then((value) => { if (!cancelled) setAvailability(value); }).catch(() => {});
+    setAvailability(null);
+    api<AnswerStatus>(`/api/questions/status?snapshotId=${encodeURIComponent(snapshot.snapshotId)}`).then((value) => { if (!cancelled) setAvailability(value); }).catch(() => {});
     return () => { cancelled = true; };
   }, [snapshot.snapshotId]);
   useEffect(() => {
     if (files) return;
     let cancelled = false;
-    api<{ files: SourceFile[] }>("/api/repository").then((value) => {
+    api<{ files: SourceFile[] }>(`/api/repository?snapshotId=${encodeURIComponent(snapshot.snapshotId)}`).then((value) => {
       if (!cancelled) setInventory(value.files.filter((file) => file.snapshotId === snapshot.snapshotId));
     }).catch(() => {});
     return () => { cancelled = true; };
@@ -194,14 +253,11 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
     try {
       const response = await api<QaResponse>("/api/questions", { method: "POST", body: JSON.stringify(requestBody(submission)), signal: controller.signal });
       // Fetch source excerpts through verified links; history needs only reference metadata.
-      const entry: HistoryEntry = { id: `${Date.now()}-${number}`, context: submission,
+      const entry: HistoryEntry = { id: response.answerId ?? `${Date.now()}-${number}`, context: submission,
         response: { ...response, citations: response.citations.map((citation) => ({ ...citation, text: "" })) } };
       if (currentSnapshot.current === submission.snapshotId && number === requestNumber.current) {
         revealAnswer.current = true;
-        setHistory((previous) => [entry, ...previous].slice(0, HISTORY_LIMIT)); setSelectedId(entry.id);
-      } else {
-        const saved = readSaved(submission.snapshotId);
-        writeSaved(submission.snapshotId, [entry, ...saved.entries].slice(0, HISTORY_LIMIT), entry.id, saved.draft, saved.scope);
+        setHistory((previous) => [entry, ...previous.filter(item => item.id !== entry.id)].slice(0, 100)); setSelectedId(entry.id);
       }
     } catch (error) {
       if (currentSnapshot.current === submission.snapshotId && number === requestNumber.current) {
@@ -212,15 +268,31 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
       if (currentSnapshot.current === submission.snapshotId && number === requestNumber.current) setPending(null);
     }
   }
+  async function saveAnswer() {
+    if (!bookmarkDraft || bookmarkPending || !selected || selected.response.answerId !== bookmarkDraft.answerId) return;
+    const snapshotId = selected.context.snapshotId;
+    setBookmarkPending(true); setBookmarkStatus("");
+    try {
+      await api("/api/notebook/bookmarks", { method: "POST", body: JSON.stringify({ snapshotId, title: bookmarkDraft.title, note: bookmarkDraft.note, answerId: bookmarkDraft.answerId }) });
+      if (currentSnapshot.current !== snapshotId) return;
+      setBookmarkDraft(null); setBookmarkStatus("Answer saved to your notebook with its original context and citations.");
+      window.dispatchEvent(new CustomEvent("astrolabe:notebook-changed", { detail: { snapshotId } }));
+    } catch (error) { if (currentSnapshot.current === snapshotId) setBookmarkStatus(error instanceof Error ? error.message : "Could not save the answer. Your note is still here."); }
+    finally { if (currentSnapshot.current === snapshotId) setBookmarkPending(false); }
+  }
   function ask(value = question) { setQuestion(value); if (!sourcePending) void send({ ...context, question: value.trim() }); }
   function chooseScope(next: Scope) { setScope(next); setScopeNotice(""); }
-  function prepareQuestion() { chooseScope("repository"); setQuestion("How does setState update state?"); textareaRef.current?.focus(); }
-  const path = activeScope === "repository" ? "" : document?.file.path;
-  const suggestions = activeScope === "walkthrough"
-    ? guide?.id === "store-to-react" ? ["What is getInitialState?"] : guide?.id === "state-to-subscribers" ? ["How does setState update state?", "How do I unsubscribe?"] : []
-    : activeScope === "repository" ? ["How does setState update state?", "How does useStore use a selector?"]
-    : path === "src/react.ts" ? ["How does useStore use a selector?"]
-      : path === "src/vanilla.ts" ? ["How does setState update state?", "How do I unsubscribe?"] : [];
+  // Prepared prompts belong to their authored learning pack; source suggestions use returned metadata.
+  const preparedPrompts: Record<string, string[]> = {
+    "store-to-react": ["What is getInitialState?"],
+    "state-to-subscribers": ["How does setState update state?", "How do I unsubscribe?"],
+  };
+  const preparedQuestion = questionGuides.flatMap(item => preparedPrompts[item.id] ?? [])[0];
+  function prepareQuestion() { chooseScope("repository"); setQuestion(preparedQuestion ?? "Which exported functions define the public API?"); textareaRef.current?.focus(); }
+  const suggestions = activeScope === "walkthrough" && guide
+    ? preparedPrompts[guide.id] ?? [`How do the steps in ${guide.title} connect?`]
+    : activeScope === "repository" ? [preparedQuestion ?? "Which exported functions define the public API?"]
+      : document ? [`What does ${document.file.path} do?`] : [];
 
   return (
     <section className="mentor-panel qa-panel" aria-labelledby={`${uid}-title`}>
@@ -247,6 +319,8 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
       {!selected && !pending && <div className="mentor-suggestions"><span>Source questions to try</span>{suggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => ask(suggestion)}>{suggestion}<ChevronRight size={15} aria-hidden="true" /></button>)}{!suggestions.length && <p>Ask about a function in this file, or choose Repository for the prepared questions.</p>}</div>}
       {pending && <div className="mentor-pending" role="status" aria-live="polite"><span className="mentor-pending-dot" aria-hidden="true" /><div><strong>Waiting for an answer…</strong><p>{pending.question}</p><small>{contextLabel(pending, snapshot.name)} · {depthName(pending.depth)}</small></div></div>}
       {failed && <div className="mentor-error" role="alert"><strong>Question could not be sent.</strong><p>{failed.message}</p><small>{failed.context.question} · {contextLabel(failed.context, snapshot.name)}</small><button type="button" disabled={!!pending} onClick={() => void send(failed.context)}>Retry this request</button></div>}
+      {historyStatus === "loading" && <p className="mentor-context-notice" role="status">Restoring signed-session question history…</p>}
+      {historyStatus === "failed" && <div className="mentor-error" role="alert"><p>Saved session history could not be loaded. Recent browser answers and your draft remain available.</p><button type="button" onClick={() => setHistoryReload(value => value + 1)}>Reload saved history</button></div>}
       {history.length > 0 && <nav className="mentor-history" aria-label="Question history">
         <div className="mentor-history-heading"><span><History size={14} aria-hidden="true" /> {history.length} {history.length === 1 ? "question" : "questions"}</span>{selected?.id !== history[0].id && <button type="button" onClick={() => setSelectedId(history[0].id)}>Return to latest answer</button>}</div>
         <details><summary>Question history</summary><ol>{history.map((entry, index) => <li key={entry.id}><button type="button" aria-current={selected?.id === entry.id ? "true" : undefined} onClick={() => setSelectedId(entry.id)}><span>{entry.context.question}</span><small>{index === 0 ? "Latest · " : ""}{scopeNames[entry.context.scope]} · {depthName(entry.context.depth)} · {answerLabel(entry.response)}</small>{entry.context.scope === "walkthrough" && <small>{entry.context.guideTitle} · {entry.context.stepTitle}</small>}</button></li>)}</ol></details>
@@ -254,6 +328,7 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
       {selected && <article ref={answerRef} className={`mentor-answer qa-response ${selected.response.status}`} aria-labelledby={`${uid}-answer-title`}>
         <div className="mentor-answer-label response-label"><BookOpen size={14} aria-hidden="true" />{answerLabel(selected.response)}</div><h3 id={`${uid}-answer-title`}>{selected.context.question}</h3>
         <p className="mentor-answer-context"><span>{scopeNames[selected.context.scope]} · {depthName(selected.context.depth)} answer</span>{contextLabel(selected.context, snapshot.name)}</p>
+        <p className="mentor-context-notice mentor-answer-provenance">Pinned snapshot {selected.context.snapshotId} · commit {snapshot.commitSha.slice(0, 12)}{selected.response.provider ? ` · Provider: ${selected.response.provider}` : " · Provider: not recorded"}{selected.response.model ? ` · Model: ${selected.response.model}` : " · Model: not recorded"}</p>
         <div className="mentor-answer-text">{selected.response.blocks?.length ? selected.response.blocks.map((block, index) => <section className={`mentor-claim ${block.kind}`} key={index} aria-label={`Answer claim ${index + 1}`}>
           <small className="mentor-claim-kind">{block.kind === "observed" ? "From source" : block.kind === "inferred" ? "Interpretation" : "Not established"}</small>
           <p>{block.text}</p>
@@ -261,21 +336,29 @@ export function QuestionPanel({ snapshot, document, range, depth, onEvidence, fi
             const citation = selected.response.citations.find((item) => item.evidenceId === id);
             if (!citation) return null;
             const path = sourceFiles.find((file) => file.fileId === citation.fileId)?.path ?? "Source";
-            return <button type="button" className="mentor-citation evidence-link" key={id} onClick={() => onEvidence(id)}><span>{path} · lines {citation.startLine}–{citation.endLine}</span><ArrowUpRight size={15} aria-hidden="true" /></button>;
+            return <button type="button" className="mentor-citation evidence-link" key={id} onClick={() => onEvidence(id, citation.snapshotId)}><span>{path} · lines {citation.startLine}–{citation.endLine}</span><ArrowUpRight size={15} aria-hidden="true" /></button>;
           })}</div>}
         </section>) : selected.response.answer}</div>
-        <p className="mentor-review-state">{selected.response.reviewState === "human_reviewed" ? "Human review recorded." : selected.response.mode === "reviewed" ? "Authored prepared content · independent human review pending." : "AI-generated · check each claim against the source. Citation checks do not establish correctness."}</p>
+        <p className="mentor-review-state">{selected.response.status !== "answered" ? "No source-grounded answer was returned. Review the response notes before trying again." : selected.response.reviewState === "human_reviewed" ? "Human review recorded." : selected.response.mode === "reviewed" ? "Authored prepared content · independent human review pending." : "AI-generated · check each claim against the source. Citation checks do not establish correctness."}</p>
         {!selected.response.blocks?.length && selected.response.citations.length > 0 && <div className="mentor-citations"><h4>Check the source</h4>{selected.response.citations.map((citation) => {
           const citationPath = sourceFiles.find((file) => file.fileId === citation.fileId)?.path ?? (document?.file.fileId === citation.fileId ? document.file.path : selected.context.fileId === citation.fileId ? selected.context.path : undefined);
-          return <button type="button" key={citation.evidenceId} className="mentor-citation evidence-link" onClick={() => onEvidence(citation.evidenceId)}><BookOpen size={14} aria-hidden="true" /><span>{citationPath ?? "Source reference"} · lines {citation.startLine}–{citation.endLine}</span><ArrowUpRight size={15} aria-hidden="true" /></button>;
+          return <button type="button" key={citation.evidenceId} className="mentor-citation evidence-link" onClick={() => onEvidence(citation.evidenceId, citation.snapshotId)}><BookOpen size={14} aria-hidden="true" /><span>{citationPath ?? "Source reference"} · lines {citation.startLine}–{citation.endLine}</span><ArrowUpRight size={15} aria-hidden="true" /></button>;
         })}</div>}
-        {selected.response.status === "evidence_gap" && <div className="mentor-next-action"><p>Try a narrower source question, select a relevant range, or broaden the scope.</p><button type="button" onClick={() => { chooseScope("repository"); textareaRef.current?.focus(); }}>Use Repository scope</button></div>}
-        {selected.response.status === "unavailable" && <div className="mentor-next-action"><p>Prepared questions and walkthroughs remain available. For a question that spans files, choose a broader scope.</p><button type="button" onClick={() => { chooseScope("repository"); textareaRef.current?.focus(); }}>Use Repository scope</button>{hasWalkthrough && <button type="button" onClick={() => { chooseScope("walkthrough"); textareaRef.current?.focus(); }}>Use This walkthrough scope</button>}<button type="button" onClick={prepareQuestion}>Try a prepared question</button><button type="button" disabled={!!pending} onClick={() => void send(selected.context)}>Ask this question again</button></div>}
+        {selected.response.status === "evidence_gap" && <div className="mentor-next-action"><p>{selected.context.scope === "repository" ? "Repository scope was already used. Try a more specific source question, open a relevant file or select the lines you want to understand." : "Try a narrower source question or select a relevant range. If the question spans files, you can deliberately use Repository scope."}</p>{selected.context.scope !== "repository" && <button type="button" onClick={() => { chooseScope("repository"); textareaRef.current?.focus(); }}>Use Repository scope</button>}</div>}
+        {selected.response.status === "unavailable" && <div className="mentor-next-action"><p>Prepared questions and walkthroughs remain available. Configuration does not verify provider availability.{selected.context.scope === "repository" ? " This request already used Repository scope; broadening it cannot restore provider service." : " If the question spans files, you can deliberately use Repository scope."}</p>{selected.context.scope !== "repository" && <button type="button" onClick={() => { chooseScope("repository"); textareaRef.current?.focus(); }}>Use Repository scope</button>}{hasWalkthrough && selected.context.scope !== "walkthrough" && <button type="button" onClick={() => { chooseScope("walkthrough"); textareaRef.current?.focus(); }}>Use This walkthrough scope</button>}<button type="button" onClick={prepareQuestion}>{preparedQuestion ? "Try a prepared question" : "Try a source question"}</button><button type="button" disabled={!!pending} onClick={() => void send(selected.context)}>Ask this question again</button></div>}
         {selected.context.depth !== depth && <button type="button" className="mentor-depth-action" disabled={!!pending} onClick={() => void send({ ...selected.context, depth })}><RotateCcw size={14} aria-hidden="true" />Ask again at {depthName(depth)} depth</button>}
         {selected.response.limitations.length > 0 && <details className="mentor-answer-notes"><summary>Answer notes and limits</summary><ul>{selected.response.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}</ul></details>}
+        {selected.response.answerId && <div className="notebook-save-answer">
+          {bookmarkDraft?.answerId === selected.response.answerId ? <form onSubmit={event => { event.preventDefault(); void saveAnswer(); }}>
+            <label>Bookmark title<input maxLength={160} required value={bookmarkDraft.title} onChange={event => setBookmarkDraft({ ...bookmarkDraft, title: event.target.value })} /></label>
+            <label>Bookmark note<textarea maxLength={3000} rows={3} value={bookmarkDraft.note} onChange={event => setBookmarkDraft({ ...bookmarkDraft, note: event.target.value })} /></label>
+            <div className="notebook-actions"><button type="submit" disabled={bookmarkPending || !bookmarkDraft.title.trim()}>Save answer to notebook</button><button type="button" disabled={bookmarkPending} onClick={() => setBookmarkDraft(null)}>Cancel bookmark</button></div>
+          </form> : <button type="button" className="mentor-depth-action" onClick={() => { setBookmarkDraft({ answerId: selected.response.answerId!, title: selected.context.question.slice(0, 160), note: "" }); setBookmarkStatus(""); }}><BookmarkPlus size={14} aria-hidden="true" />Bookmark this answer</button>}
+        </div>}
+        {bookmarkStatus && <p className="mentor-context-notice" role="status">{bookmarkStatus}</p>}
         <button type="button" className="mentor-depth-action" onClick={() => textareaRef.current?.focus()}><MessageSquare size={14} aria-hidden="true" />Back to your question</button>
       </article>}
-      <footer className="mentor-panel-footer"><span>Prepared answers available</span><span>{availability?.liveConfigured ? (availability.provider === "lmstudio" ? "Local AI configured · service unverified" : "Live configured · provider unverified") : availability ? "Live AI not configured" : "Live provider status unverified"}</span><small>Up to 12 recent answers stay in this browser for this snapshot.</small></footer>
+      <footer className="mentor-panel-footer"><span>{availability?.preparedAvailable === false ? "No prepared answers reported" : "Prepared answers available"}</span><span>{availability?.liveConfigured ? (availability.provider === "lmstudio" ? "Local AI configured · service unverified" : "Live configured · provider unverified") : availability ? "Live AI not configured" : "Live provider status unverified"}</span><small>Signed-session history restores up to 100 answers for this snapshot; 12 recent answers and your draft are also cached in this browser. Practice reset preserves saved answers and bookmarks.</small></footer>
     </section>
   );
 }
