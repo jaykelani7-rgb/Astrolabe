@@ -14,6 +14,7 @@ import {
 import { createConfiguredProvider, providerConfiguration } from "./provider";
 import { modelAnswerSchema } from "./schema";
 import { reviewedAnswer } from "./reviewed";
+import { recordAiDiagnostic } from './diagnostics';
 
 const LIVE_LIMITATION =
   "Live AI output: citation structure is validated, but that does not prove every claim is correct. Verify the source.";
@@ -106,11 +107,13 @@ export async function answerQuestion(
       sourcePaths: Object.fromEntries(store.listFiles().map((file) => [file.fileId, file.path])),
     });
     const parsed = modelAnswerSchema.safeParse(raw);
-    if (!parsed.success)
+    if (!parsed.success) {
+      recordAiDiagnostic({ provider: 'pipeline', operation: 'validation', category: 'structured_validation', issueCodes: parsed.error.issues.map(issue => issue.code) });
       return gap([
         ...context.limitations,
         "The AI response failed structured validation and was withheld.",
       ]);
+    }
     const model = parsed.data;
     if (model.status === "evidence_gap")
       return gap(
@@ -118,19 +121,23 @@ export async function answerQuestion(
         model.blocks.map((block) => block.text).join("\n\n"),
       );
     const citationIds = model.blocks.flatMap((block) => block.evidenceIds);
-    if (!citationIds.length)
+    if (!citationIds.length) {
+      recordAiDiagnostic({ provider: 'pipeline', operation: 'validation', category: 'citation_validation' });
       return gap([
         ...context.limitations,
         "The AI supplied no source citations; its answer was withheld.",
       ]);
+    }
     const allowed = new Map(
       context.evidence.map((item) => [item.evidenceId, item]),
     );
-    if (citationIds.some((id) => !allowed.has(id)))
+    if (citationIds.some((id) => !allowed.has(id))) {
+      recordAiDiagnostic({ provider: 'pipeline', operation: 'validation', category: 'citation_validation' });
       return gap([
         ...context.limitations,
         "The AI referenced evidence outside this question; its answer was withheld.",
       ]);
+    }
     const citations = [...new Set(citationIds)].map((id) =>
       validateEvidence(allowed.get(id)!, input.snapshotId, store),
     );

@@ -2,6 +2,7 @@ import 'server-only';
 import { modelJsonSchema } from './schema';
 import { ProviderUnavailableError, SYSTEM_INSTRUCTION, readBoundedJson, type AnswerProvider } from './shared';
 import { sourceMechanisms } from './mechanisms';
+import { recordAiDiagnostic } from './diagnostics';
 
 export const DEFAULT_LOCAL_MODEL = 'astrolabe-coder';
 export const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:1234/v1';
@@ -38,6 +39,7 @@ export function createLocalProvider(options: {
       timer = setTimeout(() => { controller.abort(); reject(new ProviderUnavailableError('timeout')); }, options.timeoutMs ?? LOCAL_AI_TIMEOUT_MS);
     });
     const generate = async () => {
+      recordAiDiagnostic({ provider: 'lmstudio', operation: 'request', model });
       const response = await (options.fetch ?? fetch)(`${baseUrl}/chat/completions`, {
         method: 'POST', redirect: 'error', signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
@@ -56,7 +58,7 @@ export function createLocalProvider(options: {
           response_format: { type: 'json_schema', json_schema: { name: 'mentor_answer', strict: true, schema: responseSchema } },
         }),
       });
-      if (!response.ok) { await response.body?.cancel(); throw new ProviderUnavailableError('provider_error', response.status); }
+      if (!response.ok) { recordAiDiagnostic({ provider: 'lmstudio', operation: 'result', category: 'http_failure', httpStatus: response.status }); await response.body?.cancel(); throw new ProviderUnavailableError('provider_error', response.status); }
       const payload = await readBoundedJson(response) as { choices?: { finish_reason?: string; message?: { content?: string; refusal?: string } }[] };
       const choice = payload.choices?.[0];
       if (choice?.finish_reason !== 'stop' || choice.message?.refusal || typeof choice.message?.content !== 'string') {

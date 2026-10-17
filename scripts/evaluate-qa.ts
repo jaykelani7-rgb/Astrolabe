@@ -6,6 +6,8 @@ import { performance } from 'node:perf_hooks';
 import { answerQuestion } from '../src/lib/ai';
 import { providerConfiguration } from '../src/lib/ai/provider';
 import { getSnapshot, getSource } from '../src/lib/repository';
+import { evaluationProvenance } from '../src/lib/ai/provenance';
+import { captureAiDiagnostics } from '../src/lib/ai/diagnostics';
 
 type EvaluationQuestion = { id: string; split: 'development' | 'held_out'; question: string; expectation: string; sourcePaths: string[]; preparedMatch?: boolean };
 
@@ -19,12 +21,13 @@ async function main() {
   const questions = bank.questions.filter((question) => includeHeldOut || question.split === 'development');
   const results = [];
   const configuration = providerConfiguration();
-  const implementationHashes = Object.fromEntries(['src/lib/retrieval/index.ts', 'src/lib/repository/index.ts', 'src/lib/ai/shared.ts', 'src/lib/ai/local.ts'].map(path => [path, createHash('sha256').update(readFileSync(resolve(path))).digest('hex')]));
+  const provenance = evaluationProvenance();
+  const implementationHashes = provenance.implementationHashes;
   for (const question of questions) {
     const context = retrieveContext({ question: question.question, snapshotId: bank.snapshotId, depth: 'developer' });
     const retrievedContext = context.evidence.map(e => ({ evidenceId: e.evidenceId, path: getSource(e.fileId, bank.snapshotId).file.path, startLine: e.startLine, endLine: e.endLine, contentHash: e.contentHash, characters: e.text.length }));
     const started = performance.now();
-    const response = await answerQuestion({ question: question.question, snapshotId: bank.snapshotId, depth: 'developer' }, { useCache: false, prepared: !live });
+    const { value: response, diagnostics } = await captureAiDiagnostics(() => answerQuestion({ question: question.question, snapshotId: bank.snapshotId, depth: 'developer' }, { useCache: false, prepared: !live }));
     const latencyMs = Number((performance.now() - started).toFixed(2));
     const referenceValidity = response.citations.length ? response.citations.every((citation) => {
       const source = getSource(citation.fileId, bank.snapshotId);
@@ -32,14 +35,14 @@ async function main() {
         && citation.startLine >= 1 && citation.endLine <= source.lines.length
         && citation.text === source.lines.slice(citation.startLine - 1, citation.endLine).join('\n');
     }) : null;
-    results.push({ id: question.id, retrievedContext, split: question.split, question: question.question, expectation: question.expectation, latencyMs, referenceValidity,
+    results.push({ id: question.id, retrievedContext, split: question.split, question: question.question, expectation: question.expectation, latencyMs, referenceValidity, diagnostics, actualProviderRequests: diagnostics.filter(event => event.operation === 'request').length,
       citedExpectedPath: response.citations.some((citation) => question.sourcePaths.includes(getSource(citation.fileId).file.path)),
       response, humanClaimSupport: 'pending', reviewerNotes: '' });
   }
   const times = results.map((result) => result.latencyMs).sort((a, b) => a - b);
   const report = {
     generatedAt: new Date().toISOString(), snapshotId: snapshot.snapshotId, commitSha: snapshot.commitSha,
-    configuration: { implementationHashes, provider: configuration.provider, model: configuration.model, requestedLive: live, providerConfigured: configuration.configured, credentialPresent: Boolean(process.env.GEMINI_API_KEY), includedHeldOut: includeHeldOut, cache: false },
+    configuration: { ...provenance, implementationHashes, provider: configuration.provider, model: configuration.model, requestedLive: live, providerConfigured: configuration.configured, credentialPresent: Boolean(process.env.GEMINI_API_KEY), includedHeldOut: includeHeldOut, preparedMatching: !live, cache: false },
     summary: {
       questionsRun: results.length,
       answeredReviewed: results.filter((result) => result.response.status === 'answered' && result.response.mode === 'reviewed').length,

@@ -1,5 +1,6 @@
 import "server-only";
 import type { Evidence, QuestionInput, WalkthroughContext } from "@/contracts";
+import type { FailureCategory } from './diagnostics';
 const MAX_PROVIDER_BYTES = 64_000;
 
 export class ProviderUnavailableError extends Error {
@@ -12,6 +13,7 @@ export class ProviderUnavailableError extends Error {
       | "disabled"
       | "invalid_configuration",
     public httpStatus?: number,
+    public diagnostic?: { category: FailureCategory; responseBytes?: number },
   ) {
     super(reason);
     this.name = "ProviderUnavailableError";
@@ -36,18 +38,19 @@ Optional sourceMechanisms are literal syntax extracted from these same excerpts,
 Trace conditions and assignment direction literally. Object.assign(target, ...sources) copies onto target; later source properties overwrite earlier ones. Object.is is not deep equality or the === operator. In x ?? fallback, false is a provided value. Quote an intricate condition rather than simplifying it inaccurately. Explain only the visible operations, without adding asynchronous behavior, performance, framework rendering guarantees or motives absent from the supplied source.
 Use concise plain language. Beginner depth defines unfamiliar terms; developer depth can discuss implementation details. Explicitly mention material uncertainty. Source code alone cannot establish historical maintainer intent; why-design questions must distinguish source observations from inference and unknown intent. Never claim that citation validation proves semantic correctness.`;
 
-export async function readBoundedJson(response: Response): Promise<unknown> {
+export async function readBoundedJson(response: Response, onSize?: (bytes: number) => void): Promise<unknown> {
   const reader = response.body?.getReader();
-  if (!reader) throw new ProviderUnavailableError("invalid_output");
+  if (!reader) throw new ProviderUnavailableError("invalid_output", undefined, { category: 'empty_body' });
   let length = 0;
   const chunks: Uint8Array[] = [];
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     length += value.byteLength;
+    onSize?.(length);
     if (length > MAX_PROVIDER_BYTES) {
       await reader.cancel();
-      throw new ProviderUnavailableError("invalid_output");
+      throw new ProviderUnavailableError("invalid_output", undefined, { category: 'oversized_response', responseBytes: length });
     }
     chunks.push(value);
   }
@@ -60,6 +63,6 @@ export async function readBoundedJson(response: Response): Promise<unknown> {
   try {
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
-    throw new ProviderUnavailableError("invalid_output");
+    throw new ProviderUnavailableError("invalid_output", undefined, { category: 'invalid_json', responseBytes: length });
   }
 }

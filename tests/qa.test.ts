@@ -364,9 +364,15 @@ describe("Gemini adapter", () => {
     // unlike the HTTP Content-Type header, which remains a MIME string.
     expect(request.method).toBe("POST");
     expect(new Headers(request.headers).get("Content-Type")).toBe("application/json");
-    expect(JSON.parse(request.body as string).generationConfig.responseFormat).toEqual({
-      text: { mimeType: "APPLICATION_JSON", schema: modelJsonSchema },
+    const generation = JSON.parse(request.body as string).generationConfig;
+    expect(generation.responseFormat).toMatchObject({
+      text: { mimeType: "APPLICATION_JSON", schema: {
+        type: modelJsonSchema.type, required: modelJsonSchema.required, additionalProperties: false,
+        properties: { blocks: { maxItems: 4, items: { properties: { text: { maxLength: 1400 }, evidenceIds: { items: { enum: [store.evidenceForRange("file-a", 1, 3).evidenceId] } } } } } },
+      } },
     });
+    expect(generation.maxOutputTokens).toBe(4096);
+    expect(generation.thinkingConfig).toEqual({ thinkingLevel: 'LOW', includeThoughts: false });
     expect(url).not.toContain("test-only-key");
     expect(request.body).not.toContain("test-only-key");
     expect(result).toEqual(output);
